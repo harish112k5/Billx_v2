@@ -1,0 +1,158 @@
+import { useEffect, useState } from 'react';
+import { useParams } from 'react-router-dom';
+import api from '../api/axios';
+import { fmt, fmtFull } from '../components/KPICard';
+import {
+  ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis,
+  CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell
+} from 'recharts';
+import { BarChart3, TrendingUp, Activity } from 'lucide-react';
+
+const TooltipStyle = {
+  contentStyle: { background: '#12121A', border: '1px solid #1E1E2E', borderRadius: 8 },
+  labelStyle: { color: '#94A3B8' },
+  itemStyle: { color: '#F1F5F9' }
+};
+
+export default function AnalyticsPage() {
+  const { id } = useParams();
+  const [analytics, setAnalytics] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      api.get(`/analytics/project/${id}`),
+    ]).then(([res]) => {
+      setAnalytics(res.data.data);
+    }).finally(() => setLoading(false));
+  }, [id]);
+
+  if (loading) return <div style={{ padding: 32, textAlign: 'center' }}><div className="loader" /></div>;
+  if (!analytics) return null;
+
+  const { ra_progression, category_breakdown, planning, billing, variance } = analytics;
+
+  const raTrendData = (ra_progression || []).map(r => ({
+    name: r.ra_code || `RA-${r.ra}`,
+    Basic:     parseFloat(r.cumulative_basic) || 0,
+    Payable:   parseFloat(r.net_payable) || 0,
+    Received:  parseFloat(r.received) || 0,
+  }));
+
+  const catData = (category_breakdown || []).slice(0, 8).map(c => ({
+    name: c.category || 'Other',
+    Planned:   parseFloat(c.planned) || 0,
+    Executed:  parseFloat(c.executed) || 0,
+  }));
+
+  const boqStatusData = [
+    { name: 'Completed',    value: planning?.completed_items   || 0, color: '#10B981' },
+    { name: 'In Progress',  value: planning?.in_progress_items || 0, color: '#F59E0B' },
+    { name: 'Not Started',  value: planning?.not_started_items || 0, color: '#64748B' },
+    { name: 'Exceeded BOQ', value: planning?.exceeded_boq_items || 0, color: '#EF4444' },
+  ].filter(d => d.value > 0);
+
+  return (
+    <div className="fade-in">
+      <div className="page-header">
+        <div>
+          <div className="page-title">Analytics</div>
+          <div className="page-subtitle">Deep-dive into project execution performance</div>
+        </div>
+      </div>
+
+      {/* Variance KPIs */}
+      <div className="kpi-grid kpi-grid-3 mb-24">
+        <div className={`kpi-card ${(variance?.planned_vs_executed_percent || 0) >= 0 ? 'green' : 'red'}`}>
+          <div className="kpi-label">Planned vs Executed (Δ)</div>
+          <div className={`kpi-value ${(variance?.planned_vs_executed_percent || 0) >= 0 ? 'green' : 'red'}`}>
+            {(variance?.planned_vs_executed_percent || 0) >= 0 ? '+' : ''}{(variance?.planned_vs_executed_percent || 0).toFixed(2)}%
+          </div>
+          <div className="kpi-sub">{fmtFull(Math.abs(variance?.planned_vs_executed_amount || 0))} {variance?.planned_vs_executed_amount >= 0 ? 'over' : 'under'} plan</div>
+        </div>
+        <div className="kpi-card blue">
+          <div className="kpi-label">Total Planned</div>
+          <div className="kpi-value blue">{fmt(planning?.total_planned_amount)}</div>
+          <div className="kpi-sub">{planning?.total_boq_items} BOQ items</div>
+        </div>
+        <div className="kpi-card amber">
+          <div className="kpi-label">Total Executed</div>
+          <div className="kpi-value amber">{fmt(analytics?.execution?.amount_upto_date)}</div>
+          <div className="kpi-sub">Certified upto date</div>
+        </div>
+      </div>
+
+      {/* RA Trend Chart */}
+      <div className="section-card">
+        <div className="section-title mb-16"><BarChart3 /> RA Bill Trend — Cumulative vs Received</div>
+        {raTrendData.length > 0 ? (
+          <div className="chart-container">
+            <ResponsiveContainer>
+              <BarChart data={raTrendData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1E1E2E" vertical={false} />
+                <XAxis dataKey="name" tick={{ fill: '#94A3B8', fontSize: 12 }} axisLine={{ stroke: '#1E1E2E' }} tickLine={false} />
+                <YAxis tickFormatter={v => fmt(v)} tick={{ fill: '#94A3B8', fontSize: 11 }} axisLine={false} tickLine={false} />
+                <Tooltip {...TooltipStyle} formatter={v => fmtFull(v)} />
+                <Legend wrapperStyle={{ fontSize: 12, color: '#94A3B8' }} />
+                <Bar dataKey="Basic"    fill="#F59E0B" radius={[4,4,0,0]} name="Cumulative Basic" />
+                <Bar dataKey="Payable"  fill="#8B5CF6" radius={[4,4,0,0]} name="Net Payable" />
+                <Bar dataKey="Received" fill="#10B981" radius={[4,4,0,0]} name="Received" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        ) : <div className="empty-state"><BarChart3 /><h3>No RA Bills data</h3></div>}
+      </div>
+
+      {/* Category Breakdown + BOQ Donut */}
+      <div className="grid-2">
+        {/* Category Bar Chart */}
+        <div className="section-card">
+          <div className="section-title mb-16"><Activity /> BOQ by Category (Planned vs Executed)</div>
+          {catData.length > 0 ? (
+            <div style={{ height: 260 }}>
+              <ResponsiveContainer>
+                <BarChart data={catData} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1E1E2E" horizontal={false} />
+                  <XAxis type="number" tickFormatter={v => fmt(v)} tick={{ fill: '#94A3B8', fontSize: 10 }} axisLine={false} tickLine={false} />
+                  <YAxis type="category" dataKey="name" tick={{ fill: '#94A3B8', fontSize: 11 }} axisLine={false} tickLine={false} width={80} />
+                  <Tooltip {...TooltipStyle} formatter={v => fmtFull(v)} />
+                  <Legend wrapperStyle={{ fontSize: 11, color: '#94A3B8' }} />
+                  <Bar dataKey="Planned"  fill="#3B82F6" radius={[0,4,4,0]} name="Planned" />
+                  <Bar dataKey="Executed" fill="#F59E0B" radius={[0,4,4,0]} name="Executed" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          ) : <div className="empty-state" style={{ padding: 24 }}><Activity /><h3>No category data</h3></div>}
+        </div>
+
+        {/* BOQ Status Donut */}
+        <div className="section-card">
+          <div className="section-title mb-16"><TrendingUp /> BOQ Item Status Distribution</div>
+          {boqStatusData.length > 0 ? (
+            <div style={{ height: 260, display: 'flex', alignItems: 'center', gap: 24 }}>
+              <ResponsiveContainer width={180} height="100%">
+                <PieChart>
+                  <Pie data={boqStatusData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="value">
+                    {boqStatusData.map((e, i) => <Cell key={i} fill={e.color} stroke="none" />)}
+                  </Pie>
+                  <Tooltip {...TooltipStyle} formatter={(v,n) => [v + ' items', n]} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div style={{ flex: 1 }}>
+                {boqStatusData.map((d, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ width: 10, height: 10, borderRadius: '50%', background: d.color }} />
+                      <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{d.name}</span>
+                    </div>
+                    <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{d.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : <div className="empty-state" style={{ padding: 24 }}><TrendingUp /><h3>No data</h3></div>}
+        </div>
+      </div>
+    </div>
+  );
+}
