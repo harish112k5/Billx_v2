@@ -177,4 +177,27 @@ router.put('/:id/payment', verifyToken, async (req, res) => {
   }
 });
 
+// DELETE /api/ra-bills/:id - Hard delete an RA bill and all its associated data
+router.delete('/:id', verifyToken, async (req, res) => {
+  const conn = await db.getConnection();
+  await conn.beginTransaction();
+  try {
+    const raId = req.params.id;
+
+    // Delete in order to respect constraints (even if not strictly enforced, it's safer)
+    await conn.execute('DELETE FROM measurements WHERE ra_bill_id = ?', [raId]);
+    await conn.execute('DELETE FROM ra_bill_items WHERE ra_bill_id = ?', [raId]);
+    await conn.execute('DELETE FROM excel_imports WHERE ra_bill_id = ?', [raId]);
+    await conn.execute('DELETE FROM ra_bills WHERE ra_bill_id = ?', [raId]);
+
+    await conn.commit();
+    conn.release();
+    res.json({ success: true });
+  } catch (err) {
+    await conn.rollback();
+    conn.release();
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 module.exports = router;
