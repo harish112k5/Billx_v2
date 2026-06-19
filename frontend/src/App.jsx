@@ -17,6 +17,7 @@ import OrganizationsPage from './pages/OrganizationsPage';
 import AdminPanel        from './pages/AdminPanel';
 import ProjectsList      from './pages/ProjectsList';
 import CreateProject     from './pages/CreateProject';
+import EditProject       from './pages/EditProject';
 import ExpensesPage      from './pages/ExpensesPage';
 
 // Layout
@@ -74,6 +75,7 @@ export default function App() {
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
           <Route path="/projects" element={<ProtectedRoute><ProjectsList /></ProtectedRoute>} />
           <Route path="/projects/new" element={<ProtectedRoute><CreateProject /></ProtectedRoute>} />
+          <Route path="/projects/:id/edit" element={<ProtectedRoute><EditProject /></ProtectedRoute>} />
           <Route path="/projects/:id" element={<ProtectedRoute><ProjectDashboard /></ProtectedRoute>} />
           <Route path="/projects/:id/boq" element={<ProtectedRoute><BOQPage /></ProtectedRoute>} />
           <Route path="/projects/:id/ra-bills" element={<ProtectedRoute><RABillsList /></ProtectedRoute>} />
