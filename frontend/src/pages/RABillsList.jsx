@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import api from '../api/axios';
 import { fmt, fmtFull } from '../components/KPICard';
-import { FileText, ChevronRight, Plus } from 'lucide-react';
+import { FileText, ChevronRight, Plus, Trash2 } from 'lucide-react';
 
 export default function RABillsList() {
   const { id } = useParams();
@@ -19,6 +19,17 @@ export default function RABillsList() {
     certified: 'badge-purple', paid: 'badge-green', partially_paid: 'badge-orange'
   };
 
+  const handleDelete = async (e, bill) => {
+    e.stopPropagation();
+    if (!window.confirm(`WARNING: Are you sure you want to permanently delete ${bill.ra_code || 'RA-'+bill.ra_number}?`)) return;
+    try {
+      await api.delete(`/ra-bills/${bill.ra_bill_id}`);
+      setBills(bills.filter(b => b.ra_bill_id !== bill.ra_bill_id));
+    } catch (err) {
+      alert('Failed to delete: ' + (err.response?.data?.error || err.message));
+    }
+  };
+
   return (
     <div className="fade-in">
       <div className="page-header">
@@ -26,9 +37,14 @@ export default function RABillsList() {
           <div className="page-title">RA Bills</div>
           <div className="page-subtitle">{bills.length} bills for this project</div>
         </div>
-        <button className="btn btn-primary" onClick={() => navigate('/import')}>
-          <Plus size={14} /> Import Bill
-        </button>
+        <div style={{ display: 'flex', gap: 12 }}>
+          <button className="btn btn-secondary" onClick={() => navigate(`/projects/${id}/ra-bills/new`)} style={{ background: 'var(--surface-dark)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
+            <Plus size={14} /> Manual Entry
+          </button>
+          <button className="btn btn-primary" onClick={() => navigate('/import')}>
+            <Plus size={14} /> Import Excel
+          </button>
+        </div>
       </div>
 
       <div className="section-card">
@@ -58,7 +74,12 @@ export default function RABillsList() {
                     {fmtFull(Math.max(0, b.certified_amount - b.payment_received))}
                   </td>
                   <td><span className={`badge ${stageBadge[b.stage] || 'badge-muted'}`}>{b.stage?.replace('_', ' ')}</span></td>
-                  <td><ChevronRight size={14} style={{ color: 'var(--text-muted)' }} /></td>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Trash2 size={14} style={{ color: 'var(--red)', cursor: 'pointer' }} onClick={(e) => handleDelete(e, b)} title="Delete Bill" />
+                      <ChevronRight size={14} style={{ color: 'var(--text-muted)' }} />
+                    </div>
+                  </td>
                 </tr>
               ))}
               {bills.length === 0 && (

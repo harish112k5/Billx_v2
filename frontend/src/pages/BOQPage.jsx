@@ -64,7 +64,7 @@ export default function BOQPage() {
         <div>
           <div className="page-title">Bill of Quantities (BOQ)</div>
           <div className="page-subtitle">
-            {summary ? `${summary.total_items} items · ${summary.avg_completion_percent?.toFixed(1)}% avg completion` : ''}
+            {summary ? `${summary.total_items} items · ${parseFloat(summary.avg_completion_percent || 0).toFixed(1)}% avg completion` : ''}
           </div>
         </div>
       </div>

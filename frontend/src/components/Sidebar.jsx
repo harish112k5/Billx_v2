@@ -3,7 +3,7 @@ import { useAuth } from '../App';
 import {
   LayoutDashboard, FolderKanban, FileSpreadsheet, BarChart3,
   Upload, Building2, Users, Settings, LogOut, ChevronDown,
-  TrendingUp, Wallet, DollarSign
+  TrendingUp, Wallet, DollarSign, Sun, Moon
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import api from '../api/axios';
@@ -13,10 +13,21 @@ export default function Sidebar() {
   const navigate = useNavigate();
   const [projects, setProjects] = useState([]);
   const [projectsOpen, setProjectsOpen] = useState(false);
+  const [theme, setTheme] = useState(localStorage.getItem('billx_theme') || 'dark');
 
   useEffect(() => {
     api.get('/projects').then(r => setProjects(r.data.data?.slice(0, 5) || [])).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    document.body.setAttribute('data-theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    const newTheme = theme === 'dark' ? 'light' : 'dark';
+    setTheme(newTheme);
+    localStorage.setItem('billx_theme', newTheme);
+  };
 
   const handleLogout = () => {
     logout();
@@ -102,6 +113,11 @@ export default function Sidebar() {
             {user?.role?.replace('_', ' ')} · {user?.org_name?.split(' ')[0]}
           </div>
         </div>
+        
+        <button className="nav-item" onClick={toggleTheme} style={{ width: '100%', background: 'none', border: 'none', marginBottom: '2px' }}>
+          {theme === 'dark' ? <Sun /> : <Moon />} {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+        </button>
+        
         <button className="nav-item" onClick={handleLogout} style={{ width: '100%', background: 'none', border: 'none' }}>
           <LogOut /> Logout
         </button>
