@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import api from '../api/axios';
 import { ArrowLeft, Plus, Pencil } from 'lucide-react';
 import OrganizationModal from '../components/OrganizationModal';
 
-export default function CreateProject() {
+export default function EditProject() {
+  const { id } = useParams();
   const navigate = useNavigate();
   const [form, setForm] = useState({
     project_code: '', project_name: '', project_location: '', client_name: '',
@@ -17,21 +18,58 @@ export default function CreateProject() {
   const [editingOrg, setEditingOrg] = useState(null);
   const [editingTarget, setEditingTarget] = useState('main');
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError]   = useState('');
 
   useEffect(() => {
-    api.get('/organizations').then(res => setOrganizations(res.data.data || []));
-  }, []);
+    Promise.all([
+      api.get('/organizations'),
+      api.get(`/projects/${id}`)
+    ]).then(([orgRes, projRes]) => {
+      setOrganizations(orgRes.data.data || []);
+      const p = projRes.data.data;
+      
+      let contractor_id = '';
+      let subcontractor_id = '';
+      if (p.contracts && p.contracts.length > 0) {
+        const mainContract = p.contracts.find(c => c.contract_type === 'main');
+        if (mainContract) contractor_id = mainContract.organization_id;
+        
+        const subContract = p.contracts.find(c => c.contract_type === 'subcontract');
+        if (subContract) subcontractor_id = subContract.organization_id;
+      }
+
+      setForm({
+        project_code: p.project_code || '',
+        project_name: p.project_name || '',
+        project_location: p.project_location || '',
+        client_name: p.client_name || '',
+        work_order_number: p.work_order_number || '',
+        work_order_date: p.work_order_date ? p.work_order_date.split('T')[0] : '',
+        contract_value: p.contract_value || '',
+        start_date: p.start_date ? p.start_date.split('T')[0] : '',
+        end_date: p.end_date ? p.end_date.split('T')[0] : '',
+        status: p.status || 'ongoing',
+        description: p.description || '',
+        contractor_id,
+        subcontractor_id
+      });
+    }).catch(err => {
+      setError('Failed to load project details');
+    }).finally(() => {
+      setLoading(false);
+    });
+  }, [id]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true);
     setError('');
     try {
-      const res = await api.post('/projects', form);
-      navigate(`/projects/${res.data.project_id}`);
+      await api.put(`/projects/${id}`, form);
+      navigate(`/projects/${id}`);
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to create project');
+      setError(err.response?.data?.error || 'Failed to update project');
     } finally {
       setSaving(false);
     }
@@ -52,14 +90,16 @@ export default function CreateProject() {
     }
   };
 
+  if (loading) return <div style={{ padding: 32, textAlign: 'center' }}><div className="loader" /></div>;
+
   return (
     <div className="fade-in">
       <div className="page-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button className="btn btn-ghost btn-sm" onClick={() => navigate('/projects')}>
+          <button className="btn btn-ghost btn-sm" onClick={() => navigate(`/projects/${id}`)}>
             <ArrowLeft size={14} /> Back
           </button>
-          <div className="page-title">New Project</div>
+          <div className="page-title">Edit Project</div>
         </div>
       </div>
 
@@ -67,8 +107,8 @@ export default function CreateProject() {
         <form onSubmit={handleSubmit}>
           <div className="grid-2">
             <div className="form-group">
-              <label className="form-label">Project Code *</label>
-              <input className="form-input" value={form.project_code} onChange={set('project_code')} placeholder="TKTR-NIP-001" required />
+              <label className="form-label">Project Code (Read-Only)</label>
+              <input className="form-input" value={form.project_code} disabled />
             </div>
             <div className="form-group">
               <label className="form-label">Status</label>
@@ -83,13 +123,13 @@ export default function CreateProject() {
 
           <div className="form-group">
             <label className="form-label">Project Name *</label>
-            <input className="form-input" value={form.project_name} onChange={set('project_name')} placeholder="Construction of Loop Road @ ..." required />
+            <input className="form-input" value={form.project_name} onChange={set('project_name')} required />
           </div>
 
           <div className="grid-2">
             <div className="form-group">
               <label className="form-label">Client Name</label>
-              <input className="form-input" value={form.client_name} onChange={set('client_name')} placeholder="TK Toll Road Pvt Ltd" />
+              <input className="form-input" value={form.client_name} onChange={set('client_name')} />
             </div>
             <div className="form-group">
               <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -127,7 +167,7 @@ export default function CreateProject() {
           <div className="grid-2">
             <div className="form-group">
               <label className="form-label">Project Location</label>
-              <input className="form-input" value={form.project_location} onChange={set('project_location')} placeholder="BHS Bypass, Tamil Nadu" />
+              <input className="form-input" value={form.project_location} onChange={set('project_location')} />
             </div>
             <div className="form-group">
               <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -165,34 +205,33 @@ export default function CreateProject() {
           <div className="grid-2">
             <div className="form-group">
               <label className="form-label">Work Order Number</label>
-              <input className="form-input" value={form.work_order_number} onChange={set('work_order_number')} placeholder="SERC/MSC/23578746" />
+              <input className="form-input" value={form.work_order_number} onChange={set('work_order_number')} />
             </div>
           </div>
 
           <div className="grid-2">
             <div className="form-group">
               <label className="form-label">Contract Value (₹)</label>
-              <input type="number" className="form-input" value={form.contract_value} onChange={set('contract_value')} placeholder="46329919.93" />
+              <input type="number" className="form-input" value={form.contract_value} onChange={set('contract_value')} />
             </div>
             <div className="form-group">
               <label className="form-label">Start Date</label>
-              <input type="date" className="form-input" value={form.start_date?.split('T')[0] || ''} onChange={set('start_date')} />
+              <input type="date" className="form-input" value={form.start_date} onChange={set('start_date')} />
             </div>
           </div>
 
           <div className="grid-2">
             <div className="form-group">
               <label className="form-label">End Date</label>
-              <input type="date" className="form-input" value={form.end_date?.split('T')[0] || ''} onChange={set('end_date')} />
+              <input type="date" className="form-input" value={form.end_date} onChange={set('end_date')} />
             </div>
             <div className="form-group">
-              {/* Empty space */}
             </div>
           </div>
 
           <div className="form-group">
             <label className="form-label">Description</label>
-            <textarea className="form-textarea" value={form.description} onChange={set('description')} placeholder="Brief project description..." />
+            <textarea className="form-textarea" value={form.description} onChange={set('description')} />
           </div>
 
           {error && (
@@ -202,7 +241,7 @@ export default function CreateProject() {
           )}
 
           <button type="submit" className="btn btn-primary" disabled={saving} style={{ width: '100%', justifyContent: 'center' }}>
-            {saving ? 'Creating...' : 'Create Project'}
+            {saving ? 'Saving...' : 'Save Changes'}
           </button>
         </form>
       </div>

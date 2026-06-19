@@ -87,6 +87,13 @@ export default function ProjectDashboard() {
               <span className={`badge ${project.status === 'ongoing' ? 'badge-green' : 'badge-amber'}`}>
                 {project.status}
               </span>
+              <button 
+                className="btn btn-ghost btn-sm" 
+                onClick={() => navigate(`/projects/${id}/edit`)}
+                style={{ padding: '2px 8px', height: 'auto', fontSize: 11 }}
+              >
+                Edit
+              </button>
             </div>
             <div className="hero-project-name">{project.project_name}</div>
             <div className="hero-meta">
