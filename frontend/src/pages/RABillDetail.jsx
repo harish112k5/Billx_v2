@@ -4,7 +4,7 @@ import api from '../api/axios';
 import RABillSummary from '../components/RABillSummary';
 import BOQTable from '../components/BOQTable';
 import { fmtFull } from '../components/KPICard';
-import { FileText, ListChecks, ArrowLeft, CheckCircle, DollarSign } from 'lucide-react';
+import { FileText, ListChecks, ArrowLeft, CheckCircle, DollarSign, Trash2 } from 'lucide-react';
 
 export default function RABillDetail() {
   const { id, raId } = useParams();
@@ -53,6 +53,18 @@ export default function RABillDetail() {
     } finally { setSaving(false); }
   };
 
+  const handleDelete = async () => {
+    if (!window.confirm('WARNING: Are you sure you want to permanently delete this RA Bill and all its measurements? This action cannot be undone and will roll back the dashboard progress.')) return;
+    setSaving(true);
+    try {
+      await api.delete(`/ra-bills/${raId}`);
+      navigate(`/projects/${id}/ra-bills`);
+    } catch (err) {
+      alert('Failed to delete: ' + (err.response?.data?.error || err.message));
+      setSaving(false);
+    }
+  };
+
   if (loading) return <div style={{ padding: 32, textAlign: 'center' }}><div className="loader" /></div>;
   if (!bill)   return <div className="empty-state"><h3>RA Bill not found</h3></div>;
 
@@ -73,6 +85,9 @@ export default function RABillDetail() {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-ghost" style={{ color: 'var(--red)' }} onClick={handleDelete} disabled={saving}>
+            <Trash2 size={14} /> Delete
+          </button>
           {bill.stage !== 'certified' && bill.stage !== 'paid' && (
             <button className="btn btn-ghost" onClick={() => { setCertForm({ certified_amount: bill.net_payable, certified_date: new Date().toISOString().split('T')[0] }); setShowCertify(true); }}>
               <CheckCircle size={14} /> Certify
