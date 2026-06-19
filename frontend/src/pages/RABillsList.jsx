@@ -37,9 +37,14 @@ export default function RABillsList() {
           <div className="page-title">RA Bills</div>
           <div className="page-subtitle">{bills.length} bills for this project</div>
         </div>
-        <button className="btn btn-primary" onClick={() => navigate('/import')}>
-          <Plus size={14} /> Import Bill
-        </button>
+        <div style={{ display: 'flex', gap: 12 }}>
+          <button className="btn btn-secondary" onClick={() => navigate(`/projects/${id}/ra-bills/new`)} style={{ background: 'var(--surface-dark)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
+            <Plus size={14} /> Manual Entry
+          </button>
+          <button className="btn btn-primary" onClick={() => navigate('/import')}>
+            <Plus size={14} /> Import Excel
+          </button>
+        </div>
       </div>
 
       <div className="section-card">

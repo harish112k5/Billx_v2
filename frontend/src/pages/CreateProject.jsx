@@ -22,7 +22,6 @@ export default function CreateProject() {
   useEffect(() => {
     api.get('/organizations').then(res => setOrganizations(res.data.data || []));
   }, []);
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true);
@@ -51,7 +50,6 @@ export default function CreateProject() {
       setForm(f => ({ ...f, subcontractor_id: org.organization_id }));
     }
   };
-
   return (
     <div className="fade-in">
       <div className="page-header">
@@ -206,7 +204,6 @@ export default function CreateProject() {
           </button>
         </form>
       </div>
-
       <OrganizationModal 
         show={showOrgModal} 
         onClose={() => setShowOrgModal(false)} 
