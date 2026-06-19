@@ -365,4 +365,218 @@ router.delete('/:id', verifyToken, async (req, res) => {
   }
 });
 
+// POST /api/ra-bills/:id/items — add a single BOQ item to an existing RA Bill
+router.post('/:id/items', verifyToken, async (req, res) => {
+  const conn = await db.getConnection();
+  await conn.beginTransaction();
+  try {
+    const ra_bill_id = req.params.id;
+
+    // Get RA bill info
+    const [bills] = await conn.execute('SELECT project_id, contract_id, ipc_number FROM ra_bills WHERE ra_bill_id=?', [ra_bill_id]);
+    if (!bills.length) { conn.release(); return res.status(404).json({ success: false, error: 'RA Bill not found' }); }
+    const { project_id, contract_id, ipc_number } = bills[0];
+
+    const {
+      boq_id, item_code, item_number, description, unit,
+      planned_quantity, unit_rate,
+      qty_upto_previous, qty_upto_date, qty_this_bill,
+      amount_upto_previous, amount_upto_date, amount_this_bill,
+      is_non_boq,
+      measurements = []
+    } = req.body;
+
+    let actualBoqId = boq_id;
+
+    // Create new BOQ item if no existing one
+    if (!actualBoqId) {
+      actualBoqId = uuidv4();
+      await conn.execute(
+        `INSERT INTO boq_items
+         (boq_id, project_id, contract_id, item_code, item_number, description, unit, planned_quantity, unit_rate, is_non_boq)
+         VALUES (?,?,?,?,?,?,?,?,?,?)
+         ON DUPLICATE KEY UPDATE item_number=VALUES(item_number), description=VALUES(description),
+           unit=VALUES(unit), planned_quantity=VALUES(planned_quantity), unit_rate=VALUES(unit_rate)`,
+        [actualBoqId, project_id, contract_id, item_code || ('MANUAL-' + Date.now()),
+         item_number || null, description, unit || 'LS',
+         parseFloat(planned_quantity) || 0, parseFloat(unit_rate) || 0,
+         is_non_boq ? 1 : 0]
+      );
+      // Re-read to handle ON DUPLICATE KEY
+      const [boqRow] = await conn.execute(
+        'SELECT boq_id FROM boq_items WHERE project_id=? AND item_code=?',
+        [project_id, item_code]
+      );
+      if (boqRow.length) actualBoqId = boqRow[0].boq_id;
+    }
+
+    const qty_this = parseFloat(qty_this_bill) || 0;
+    const qty_upto = parseFloat(qty_upto_date) || 0;
+    const qty_prev = parseFloat(qty_upto_previous) || 0;
+    const rate     = parseFloat(unit_rate) || 0;
+    const amt_this = parseFloat(amount_this_bill) || qty_this * rate;
+    const amt_upto = parseFloat(amount_upto_date) || qty_upto * rate;
+    const amt_prev = parseFloat(amount_upto_previous) || qty_prev * rate;
+    const planned_q = parseFloat(planned_quantity) || 0;
+
+    const ra_item_id = uuidv4();
+    await conn.execute(
+      `INSERT INTO ra_bill_items
+       (ra_item_id, ra_bill_id, boq_id, qty_upto_date, qty_upto_previous, qty_this_bill,
+        amount_upto_date, amount_upto_previous, amount_this_bill,
+        qty_diff_from_boq, amount_diff_from_boq, unit_rate, is_non_boq)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [ra_item_id, ra_bill_id, actualBoqId,
+       qty_upto, qty_prev, qty_this,
+       amt_upto, amt_prev, amt_this,
+       qty_upto - planned_q, (amt_upto) - (planned_q * rate), rate,
+       is_non_boq ? 1 : 0]
+    );
+
+    // Insert measurements
+    for (const m of measurements) {
+      if (!m.quantity && !m.description) continue;
+      await conn.execute(
+        `INSERT INTO measurements
+         (measurement_id, ra_item_id, boq_id, ra_bill_id, serial_no, measurement_date,
+          rfi_number, description, location_from, location_to, side, nos,
+          length, breadth, depth, quantity, ipc_number, remarks)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [
+          uuidv4(), ra_item_id, actualBoqId, ra_bill_id,
+          m.serial_no || null, m.measurement_date || null,
+          m.rfi_number || null, m.description || null,
+          parseFloat(m.location_from) || null, parseFloat(m.location_to) || null,
+          m.side || null, parseFloat(m.nos) || null,
+          parseFloat(m.length) || null, parseFloat(m.breadth) || null,
+          parseFloat(m.depth) || null, parseFloat(m.quantity) || 0,
+          ipc_number || null, m.remarks || null
+        ]
+      );
+    }
+
+    // Recalculate RA bill basic_amount_this_bill from sum of items
+    await conn.execute(
+      `UPDATE ra_bills SET
+       basic_amount_this_bill = (SELECT COALESCE(SUM(amount_this_bill),0) FROM ra_bill_items WHERE ra_bill_id=?),
+       basic_amount_upto_date = (SELECT COALESCE(SUM(amount_upto_date),0) FROM ra_bill_items WHERE ra_bill_id=?)
+       WHERE ra_bill_id=?`,
+      [ra_bill_id, ra_bill_id, ra_bill_id]
+    );
+
+    await conn.commit();
+    conn.release();
+    res.status(201).json({ success: true, ra_item_id });
+  } catch (err) {
+    await conn.rollback();
+    conn.release();
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// PUT /api/ra-bills/:id/items/:itemId — update an existing BOQ item in an RA Bill
+router.put('/:id/items/:itemId', verifyToken, async (req, res) => {
+  const conn = await db.getConnection();
+  await conn.beginTransaction();
+  try {
+    const { id: ra_bill_id, itemId: ra_item_id } = req.params;
+    const {
+      qty_upto_previous, qty_upto_date, qty_this_bill,
+      amount_upto_previous, amount_upto_date, amount_this_bill,
+      unit_rate, measurements = []
+    } = req.body;
+
+    const qty_this = parseFloat(qty_this_bill) || 0;
+    const rate     = parseFloat(unit_rate) || 0;
+    const qty_upto = parseFloat(qty_upto_date) || 0;
+    const qty_prev = parseFloat(qty_upto_previous) || 0;
+    const amt_this = parseFloat(amount_this_bill) || qty_this * rate;
+    const amt_upto = parseFloat(amount_upto_date) || qty_upto * rate;
+    const amt_prev = parseFloat(amount_upto_previous) || qty_prev * rate;
+
+    await conn.execute(
+      `UPDATE ra_bill_items SET
+       qty_upto_date=?, qty_upto_previous=?, qty_this_bill=?,
+       amount_upto_date=?, amount_upto_previous=?, amount_this_bill=?, unit_rate=?
+       WHERE ra_item_id=?`,
+      [qty_upto, qty_prev, qty_this, amt_upto, amt_prev, amt_this, rate, ra_item_id]
+    );
+
+    // Replace measurements: delete old, insert new
+    if (measurements.length > 0) {
+      await conn.execute('DELETE FROM measurements WHERE ra_item_id=?', [ra_item_id]);
+      const [itemRow] = await conn.execute('SELECT boq_id FROM ra_bill_items WHERE ra_item_id=?', [ra_item_id]);
+      const boq_id = itemRow[0]?.boq_id;
+      const [billRow] = await conn.execute('SELECT ipc_number FROM ra_bills WHERE ra_bill_id=?', [ra_bill_id]);
+      const ipc = billRow[0]?.ipc_number;
+
+      for (const m of measurements) {
+        if (!m.quantity && !m.description) continue;
+        await conn.execute(
+          `INSERT INTO measurements
+           (measurement_id, ra_item_id, boq_id, ra_bill_id, serial_no, measurement_date,
+            rfi_number, description, location_from, location_to, side, nos,
+            length, breadth, depth, quantity, ipc_number, remarks)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          [
+            uuidv4(), ra_item_id, boq_id, ra_bill_id,
+            m.serial_no || null, m.measurement_date || null,
+            m.rfi_number || null, m.description || null,
+            parseFloat(m.location_from) || null, parseFloat(m.location_to) || null,
+            m.side || null, parseFloat(m.nos) || null,
+            parseFloat(m.length) || null, parseFloat(m.breadth) || null,
+            parseFloat(m.depth) || null, parseFloat(m.quantity) || 0,
+            ipc || null, m.remarks || null
+          ]
+        );
+      }
+    }
+
+    // Recalculate RA bill totals
+    await conn.execute(
+      `UPDATE ra_bills SET
+       basic_amount_this_bill = (SELECT COALESCE(SUM(amount_this_bill),0) FROM ra_bill_items WHERE ra_bill_id=?),
+       basic_amount_upto_date = (SELECT COALESCE(SUM(amount_upto_date),0) FROM ra_bill_items WHERE ra_bill_id=?)
+       WHERE ra_bill_id=?`,
+      [ra_bill_id, ra_bill_id, ra_bill_id]
+    );
+
+    await conn.commit();
+    conn.release();
+    res.json({ success: true });
+  } catch (err) {
+    await conn.rollback();
+    conn.release();
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE /api/ra-bills/:id/items/:itemId — remove a BOQ item from an RA Bill
+router.delete('/:id/items/:itemId', verifyToken, async (req, res) => {
+  const conn = await db.getConnection();
+  await conn.beginTransaction();
+  try {
+    const { id: ra_bill_id, itemId: ra_item_id } = req.params;
+    await conn.execute('DELETE FROM measurements WHERE ra_item_id=?', [ra_item_id]);
+    await conn.execute('DELETE FROM ra_bill_items WHERE ra_item_id=?', [ra_item_id]);
+
+    // Recalculate RA bill totals
+    await conn.execute(
+      `UPDATE ra_bills SET
+       basic_amount_this_bill = (SELECT COALESCE(SUM(amount_this_bill),0) FROM ra_bill_items WHERE ra_bill_id=?),
+       basic_amount_upto_date = (SELECT COALESCE(SUM(amount_upto_date),0) FROM ra_bill_items WHERE ra_bill_id=?)
+       WHERE ra_bill_id=?`,
+      [ra_bill_id, ra_bill_id, ra_bill_id]
+    );
+
+    await conn.commit();
+    conn.release();
+    res.json({ success: true });
+  } catch (err) {
+    await conn.rollback();
+    conn.release();
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 module.exports = router;

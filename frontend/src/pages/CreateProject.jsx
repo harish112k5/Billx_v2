@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
-import { ArrowLeft, Plus, Pencil } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Users } from 'lucide-react';
 import OrganizationModal from '../components/OrganizationModal';
 
 export default function CreateProject() {
@@ -10,24 +10,27 @@ export default function CreateProject() {
     project_code: '', project_name: '', project_location: '', client_name: '',
     work_order_number: '', work_order_date: '', contract_value: '',
     start_date: '', end_date: '', status: 'ongoing', description: '', 
-    contractor_id: '', subcontractor_id: ''
+    contractor_id: ''
   });
+  const [subcontractorIds, setSubcontractorIds] = useState([]);
   const [organizations, setOrganizations] = useState([]);
   const [showOrgModal, setShowOrgModal] = useState(false);
   const [editingOrg, setEditingOrg] = useState(null);
-  const [editingTarget, setEditingTarget] = useState('main');
+  const [editingTarget, setEditingTarget] = useState('main'); // 'main' | 'sub'
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
 
   useEffect(() => {
     api.get('/organizations').then(res => setOrganizations(res.data.data || []));
   }, []);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true);
     setError('');
     try {
-      const res = await api.post('/projects', form);
+      const payload = { ...form, subcontractor_ids: subcontractorIds.filter(Boolean) };
+      const res = await api.post('/projects', payload);
       navigate(`/projects/${res.data.project_id}`);
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to create project');
@@ -47,9 +50,29 @@ export default function CreateProject() {
     if (editingTarget === 'main') {
       setForm(f => ({ ...f, contractor_id: org.organization_id }));
     } else {
-      setForm(f => ({ ...f, subcontractor_id: org.organization_id }));
+      // Add to sub list if not already there
+      setSubcontractorIds(prev => prev.includes(org.organization_id) ? prev : [...prev, org.organization_id]);
     }
   };
+
+  const addSubcontractor = () => {
+    setSubcontractorIds(prev => [...prev, '']);
+  };
+
+  const updateSub = (idx, value) => {
+    setSubcontractorIds(prev => prev.map((v, i) => i === idx ? value : v));
+  };
+
+  const removeSub = (idx) => {
+    setSubcontractorIds(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  // Get org name helper
+  const getOrgName = (orgId) => {
+    const org = organizations.find(o => o.organization_id === orgId);
+    return org ? org.org_name : '';
+  };
+
   return (
     <div className="fade-in">
       <div className="page-header">
@@ -90,74 +113,109 @@ export default function CreateProject() {
               <input className="form-input" value={form.client_name} onChange={set('client_name')} placeholder="TK Toll Road Pvt Ltd" />
             </div>
             <div className="form-group">
-              <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span>Main Contractor</span>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  {form.contractor_id && (
-                    <button type="button" className="btn btn-ghost btn-sm" style={{ padding: '0 4px', height: 20 }} onClick={() => {
-                      setEditingTarget('main');
-                      setEditingOrg(organizations.find(o => o.organization_id === form.contractor_id));
-                      setShowOrgModal(true);
-                    }}>
-                      <Pencil size={12} />
-                    </button>
-                  )}
-                  <button type="button" className="btn btn-ghost btn-sm" style={{ padding: '0 4px', height: 20 }} onClick={() => {
-                    setEditingTarget('main');
-                    setEditingOrg(null);
-                    setShowOrgModal(true);
-                  }}>
-                    <Plus size={12} />
-                  </button>
-                </div>
-              </label>
-              <select className="form-select" value={form.contractor_id} onChange={set('contractor_id')}>
-                <option value="">Select Main Contractor...</option>
-                {organizations.map(org => (
-                  <option key={org.organization_id} value={org.organization_id}>
-                    {org.org_name} ({org.org_type.replace('_', ' ')})
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="grid-2">
-            <div className="form-group">
               <label className="form-label">Project Location</label>
               <input className="form-input" value={form.project_location} onChange={set('project_location')} placeholder="BHS Bypass, Tamil Nadu" />
             </div>
-            <div className="form-group">
-              <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span>Subcontractor</span>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  {form.subcontractor_id && (
-                    <button type="button" className="btn btn-ghost btn-sm" style={{ padding: '0 4px', height: 20 }} onClick={() => {
-                      setEditingTarget('sub');
-                      setEditingOrg(organizations.find(o => o.organization_id === form.subcontractor_id));
-                      setShowOrgModal(true);
-                    }}>
-                      <Pencil size={12} />
-                    </button>
-                  )}
-                  <button type="button" className="btn btn-ghost btn-sm" style={{ padding: '0 4px', height: 20 }} onClick={() => {
-                    setEditingTarget('sub');
-                    setEditingOrg(null);
+          </div>
+
+          {/* ── Main Contractor ── */}
+          <div style={{ border: '1px solid var(--border-dark)', borderRadius: 'var(--radius)', padding: 16, marginBottom: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--amber)', textTransform: 'uppercase', letterSpacing: 1 }}>
+                Main Contractor
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {form.contractor_id && (
+                  <button type="button" className="btn btn-ghost btn-sm" style={{ padding: '2px 6px', height: 24 }} onClick={() => {
+                    setEditingTarget('main');
+                    setEditingOrg(organizations.find(o => o.organization_id === form.contractor_id));
                     setShowOrgModal(true);
                   }}>
-                    <Plus size={12} />
+                    <Pencil size={12} />
                   </button>
-                </div>
-              </label>
-              <select className="form-select" value={form.subcontractor_id} onChange={set('subcontractor_id')}>
-                <option value="">Select Subcontractor...</option>
-                {organizations.map(org => (
-                  <option key={org.organization_id} value={org.organization_id}>
-                    {org.org_name} ({org.org_type.replace('_', ' ')})
-                  </option>
-                ))}
-              </select>
+                )}
+                <button type="button" className="btn btn-ghost btn-sm" style={{ padding: '2px 6px', height: 24 }} onClick={() => {
+                  setEditingTarget('main');
+                  setEditingOrg(null);
+                  setShowOrgModal(true);
+                }}>
+                  <Plus size={12} /> New
+                </button>
+              </div>
             </div>
+            <select className="form-select" value={form.contractor_id} onChange={set('contractor_id')}>
+              <option value="">Select Main Contractor...</option>
+              {organizations.map(org => (
+                <option key={org.organization_id} value={org.organization_id}>
+                  {org.org_name} ({org.org_type.replace('_', ' ')})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* ── Subcontractors (multiple) ── */}
+          <div style={{ border: '1px solid var(--border-dark)', borderRadius: 'var(--radius)', padding: 16, marginBottom: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: 1 }}>
+                  Subcontractors
+                </div>
+                {subcontractorIds.length > 0 && (
+                  <span className="badge badge-blue" style={{ fontSize: 10 }}>{subcontractorIds.filter(Boolean).length}</span>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button type="button" className="btn btn-ghost btn-sm" style={{ padding: '2px 6px', height: 24 }} onClick={() => {
+                  setEditingTarget('sub');
+                  setEditingOrg(null);
+                  setShowOrgModal(true);
+                }}>
+                  <Plus size={12} /> New Org
+                </button>
+                <button type="button" className="btn btn-ghost btn-sm" style={{ padding: '2px 6px', height: 24, color: 'var(--blue)', borderColor: 'var(--blue)' }} onClick={addSubcontractor}>
+                  <Plus size={12} /> Add Sub
+                </button>
+              </div>
+            </div>
+
+            {subcontractorIds.length === 0 ? (
+              <div style={{ padding: '16px 12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 12, background: 'var(--surface-dark)', borderRadius: 8 }}>
+                <Users size={20} style={{ margin: '0 auto 6px', display: 'block', opacity: 0.4 }} />
+                No subcontractors added. Click "+ Add Sub" to add.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {subcontractorIds.map((subId, idx) => (
+                  <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--blue-glow)', color: 'var(--blue)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+                      {idx + 1}
+                    </div>
+                    <select className="form-select" style={{ flex: 1, marginBottom: 0 }} value={subId} onChange={e => updateSub(idx, e.target.value)}>
+                      <option value="">Select Subcontractor...</option>
+                      {organizations.map(org => (
+                        <option key={org.organization_id} value={org.organization_id}>
+                          {org.org_name} ({org.org_type.replace('_', ' ')})
+                        </option>
+                      ))}
+                    </select>
+                    {subId && (
+                      <button type="button" style={{ padding: 4, background: 'none', border: '1px solid var(--border-dark)', borderRadius: 4, cursor: 'pointer', color: 'var(--blue)' }}
+                        onClick={() => {
+                          setEditingTarget('sub');
+                          setEditingOrg(organizations.find(o => o.organization_id === subId));
+                          setShowOrgModal(true);
+                        }} title="Edit">
+                        <Pencil size={12} />
+                      </button>
+                    )}
+                    <button type="button" style={{ padding: 4, background: 'none', border: '1px solid var(--border-dark)', borderRadius: 4, cursor: 'pointer', color: 'var(--red)' }}
+                      onClick={() => removeSub(idx)} title="Remove">
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="grid-2">

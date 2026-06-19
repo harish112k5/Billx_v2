@@ -68,7 +68,7 @@ router.post('/', verifyToken, async (req, res) => {
     const {
       project_code, project_name, project_location, client_name,
       work_order_number, work_order_date, contract_value, start_date, end_date,
-      status, description, contractor_id, subcontractor_id
+      status, description, contractor_id, subcontractor_id, subcontractor_ids
     } = req.body;
 
     const project_id = uuidv4();
@@ -93,13 +93,16 @@ router.post('/', verifyToken, async (req, res) => {
       );
     }
 
-    if (subcontractor_id) {
+    // Support both single subcontractor_id and array subcontractor_ids
+    const subIds = subcontractor_ids || (subcontractor_id ? [subcontractor_id] : []);
+    for (const subId of subIds) {
+      if (!subId) continue;
       const contract_id = uuidv4();
       await db.execute(
         `INSERT INTO project_contracts
          (contract_id, project_id, organization_id, contract_type, contract_value)
          VALUES (?, ?, ?, 'subcontract', ?)`,
-        [contract_id, project_id, subcontractor_id, contract_value||0]
+        [contract_id, project_id, subId, 0]
       );
     }
 
@@ -118,7 +121,7 @@ router.put('/:id', verifyToken, async (req, res) => {
     const {
       project_name, project_location, client_name, work_order_number,
       work_order_date, contract_value, start_date, end_date, status, description,
-      contractor_id, subcontractor_id
+      contractor_id, subcontractor_id, subcontractor_ids
     } = req.body;
     await db.execute(
       `UPDATE projects SET project_name=?, project_location=?, client_name=?,
@@ -150,23 +153,21 @@ router.put('/:id', verifyToken, async (req, res) => {
       }
     }
 
-    if (subcontractor_id) {
-      const [existingSubContracts] = await db.execute(
-        `SELECT contract_id FROM project_contracts WHERE project_id = ? AND contract_type = 'subcontract'`,
+    // Handle multiple subcontractors: remove old ones, insert new
+    const subIds = subcontractor_ids || (subcontractor_id ? [subcontractor_id] : null);
+    if (subIds) {
+      await db.execute(
+        `DELETE FROM project_contracts WHERE project_id = ? AND contract_type = 'subcontract'`,
         [req.params.id]
       );
-      if (existingSubContracts.length > 0) {
-        await db.execute(
-          `UPDATE project_contracts SET organization_id = ?, contract_value = ? WHERE contract_id = ?`,
-          [subcontractor_id, contract_value||0, existingSubContracts[0].contract_id]
-        );
-      } else {
-        const contract_id = uuidv4();
+      for (const subId of subIds) {
+        if (!subId) continue;
+        const cid = uuidv4();
         await db.execute(
           `INSERT INTO project_contracts
            (contract_id, project_id, organization_id, contract_type, contract_value)
            VALUES (?, ?, ?, 'subcontract', ?)`,
-          [contract_id, req.params.id, subcontractor_id, contract_value||0]
+          [cid, req.params.id, subId, 0]
         );
       }
     }
