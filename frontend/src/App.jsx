@@ -19,6 +19,7 @@ import ProjectsList      from './pages/ProjectsList';
 import CreateProject     from './pages/CreateProject';
 import EditProject       from './pages/EditProject';
 import ExpensesPage      from './pages/ExpensesPage';
+import CreateRABill      from './pages/CreateRABill';
 
 // Layout
 import Sidebar from './components/Sidebar';
@@ -79,6 +80,7 @@ export default function App() {
           <Route path="/projects/:id" element={<ProtectedRoute><ProjectDashboard /></ProtectedRoute>} />
           <Route path="/projects/:id/boq" element={<ProtectedRoute><BOQPage /></ProtectedRoute>} />
           <Route path="/projects/:id/ra-bills" element={<ProtectedRoute><RABillsList /></ProtectedRoute>} />
+          <Route path="/projects/:id/ra-bills/new" element={<ProtectedRoute><CreateRABill /></ProtectedRoute>} />
           <Route path="/projects/:id/ra-bills/:raId" element={<ProtectedRoute><RABillDetail /></ProtectedRoute>} />
           <Route path="/projects/:id/analytics" element={<ProtectedRoute><AnalyticsPage /></ProtectedRoute>} />
           <Route path="/projects/:id/cashflow" element={<ProtectedRoute><CashFlowPage /></ProtectedRoute>} />
