@@ -14,6 +14,35 @@ const XLSX = require('xlsx');
 const path = require('path');
 
 /**
+ * parseCellDate — Robustly converts any Excel date cell value to YYYY-MM-DD string.
+ * Handles:
+ *   - JavaScript Date objects (when cellDates:true is set in readFile)
+ *   - Excel serial numbers (e.g., 45791.77083 → "2025-05-01")
+ *   - String formats: DD-MM-YYYY or DD/MM/YYYY
+ * Returns null if unparseable — caller should provide fallback.
+ */
+function parseCellDate(val) {
+  // Case 1: JavaScript Date object (from cellDates: true)
+  if (val instanceof Date && !isNaN(val.getTime())) {
+    return val.toISOString().split('T')[0];
+  }
+  // Case 2: Excel serial number (Excel epoch = 1899-12-30)
+  if (typeof val === 'number' && val > 30000) {
+    const epoch = new Date(Date.UTC(1899, 11, 30));
+    const date  = new Date(epoch.getTime() + val * 24 * 60 * 60 * 1000);
+    if (!isNaN(date.getTime())) return date.toISOString().split('T')[0];
+  }
+  // Case 3: String formats
+  if (typeof val === 'string') {
+    const parts = val.match(/^(\d{2})[-\/](\d{2})[-\/](\d{4})$/);
+    if (parts) return `${parts[3]}-${parts[2]}-${parts[1]}`;
+    const parsed = new Date(val);
+    if (!isNaN(parsed.getTime())) return parsed.toISOString().split('T')[0];
+  }
+  return null;
+}
+
+/**
  * parsePreview — quick parse for Step 2 UI preview
  * Returns: detected bill info + first 10 BOQ items + financial summary
  */
@@ -65,7 +94,7 @@ async function parsePreview(filePath, originalName) {
   // Count sheet types
   sheetNames.forEach(name => {
     const numName = parseInt(name);
-    if (!isNaN(numName) && numName > 0 && numName % 10 === 0) {
+    if (/^\d+$/.test(name.trim()) && numName > 0) {
       preview.measurement_sheets++;
     } else if (name.toLowerCase().includes('non boq') || name.toLowerCase().includes('non-boq')) {
       preview.non_boq_sheets++;
@@ -121,7 +150,7 @@ async function parseFullFile(filePath) {
   // ── 3. Measurement sheets (numeric names: 10, 20, 30...) ──────
   sheetNames.forEach(name => {
     const numName = parseInt(name);
-    if (!isNaN(numName) && numName > 0 && numName % 10 === 0) {
+    if (/^\d+$/.test(name.trim()) && numName > 0) {
       try {
         const meas = parseMeasurementSheet(workbook.Sheets[name], numName, result.abstract?.ra_number);
         result.measurements.push(...meas.rows);
@@ -364,7 +393,7 @@ function parseMeasurementSheet(sheet, sheetItemNumber, ipcNumber) {
     rows.push({
       sheet_item_number: sheetItemNumber,
       serial_no:     serialNo,
-      date:          formatDate(row[1]),
+      date:          parseCellDate(row[1]) || new Date().toISOString().split('T')[0],
       rfi_number:    (row[2] || '').toString().trim(),
       description:   (row[3] || '').toString().trim(),
       location_from: parseNum(row[4]),

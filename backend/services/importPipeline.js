@@ -159,14 +159,29 @@ async function runRABillImport({ project_id, contract_id, file_path, import_id, 
     }
 
     // ── 5. Measurements ───────────────────────────────────────
+    const measurementErrors = [];
+
     for (const meas of parsed.measurements) {
       try {
-        // Find matching boq_item by item_number * 10 = sheet name
+        // ✅ FIX: Lookup by item_code (sheet name), NOT item_number.
+        // item_number is the ordering index (1, 2, 3...).
+        // item_code matches the sheet name (1001, 1002, etc.)
+        // Also scoped by contract_id to prevent cross-contract collisions.
         const [boqRows] = await conn.execute(
-          'SELECT boq_id FROM boq_items WHERE project_id=? AND item_number=?',
-          [project_id, meas.sheet_item_number]
+          'SELECT boq_id FROM boq_items WHERE project_id=? AND contract_id=? AND item_code=?',
+          [project_id, contract_id, meas.sheet_item_number.toString()]
         );
-        if (!boqRows.length) continue;
+
+        if (!boqRows.length) {
+          measurementErrors.push({
+            type: 'measurement_boq_lookup_failed',
+            sheet: meas.sheet_item_number,
+            item_code: meas.sheet_item_number.toString(),
+            serial_no: meas.serial_no,
+            reason: 'No BOQ item found with matching item_code for this contract'
+          });
+          continue;
+        }
 
         const actualBoqId = boqRows[0].boq_id;
 
@@ -175,7 +190,17 @@ async function runRABillImport({ project_id, contract_id, file_path, import_id, 
           'SELECT ra_item_id FROM ra_bill_items WHERE ra_bill_id=? AND boq_id=?',
           [result.ra_bill_id, actualBoqId]
         );
-        if (!raItemRows.length) continue;
+
+        if (!raItemRows.length) {
+          measurementErrors.push({
+            type: 'measurement_ra_item_lookup_failed',
+            sheet: meas.sheet_item_number,
+            boq_id: actualBoqId,
+            ra_bill_id: result.ra_bill_id,
+            reason: 'No RA bill item found for this BOQ item in this bill'
+          });
+          continue;
+        }
 
         await conn.execute(
           `INSERT INTO measurements
@@ -198,6 +223,9 @@ async function runRABillImport({ project_id, contract_id, file_path, import_id, 
         result.errors.push(`Measurement serial ${meas.serial_no}: ${measErr.message}`);
       }
     }
+
+    // Merge measurement errors into the main result errors
+    result.errors.push(...measurementErrors.map(e => `[${e.type}] sheet=${e.sheet}: ${e.reason}`));
 
     // ── 6. Non-BOQ items ──────────────────────────────────────
     for (const nonBOQ of parsed.nonBOQItems) {

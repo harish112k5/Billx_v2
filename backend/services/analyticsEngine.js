@@ -88,18 +88,23 @@ async function getProjectDashboard(project_id) {
   );
 
   // ── Sandwich Layer check ──────────────────────────────────────
-  const [mainContracts] = await db.execute(
+  let [mainContracts] = await db.execute(
     `SELECT pc.contract_id, o.org_name, o.org_type
      FROM project_contracts pc JOIN organizations o ON pc.organization_id=o.organization_id
      WHERE pc.project_id=? AND pc.contract_type='main'`, [project_id]
   );
-  const [subContracts] = await db.execute(
+  let [subContracts] = await db.execute(
     `SELECT pc.contract_id, o.org_name, o.org_type, COUNT(a.allocation_id) AS alloc_count
      FROM project_contracts pc JOIN organizations o ON pc.organization_id=o.organization_id
      LEFT JOIN boq_allocations a ON a.organization_id=o.organization_id
      WHERE pc.project_id=? AND pc.contract_type='subcontract'
      GROUP BY pc.contract_id`, [project_id]
   );
+
+  if (mainContracts.length === 0 && subContracts.length > 0) {
+    mainContracts = subContracts;
+    subContracts = [];
+  }
 
   let sandwichMode = 'none';
   if (mainContracts.length > 0 && subContracts.length > 0) sandwichMode = 'full';
