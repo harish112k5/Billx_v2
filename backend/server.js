@@ -1,8 +1,13 @@
-require('dotenv').config();
+const fs       = require('fs');
+const path     = require('path');
+const envLocalPath = path.join(__dirname, '.env.local');
+if (fs.existsSync(envLocalPath)) {
+  require('dotenv').config({ path: envLocalPath });
+} else {
+  require('dotenv').config();
+}
 const express  = require('express');
 const cors     = require('cors');
-const path     = require('path');
-const fs       = require('fs');
 const initDatabase = require('./db_init');
 
 const app = express();
@@ -28,12 +33,14 @@ const importRoutes        = require('./routes/import');
 const investorRoutes      = require('./routes/investors');
 const expenseRoutes       = require('./routes/expenses');
 const adminRoutes         = require('./routes/admin');
+const budgetRoutes        = require('./routes/budget');
 
 app.use('/api/auth',          authRoutes);
 app.use('/api/organizations', organizationRoutes);
 app.use('/api/projects',      projectRoutes);
 app.use('/api/projects',      contractRoutes);
 app.use('/api/projects',      boqRoutes);
+app.use('/api/projects',      budgetRoutes);
 app.use('/api/projects',      raBillRoutes);
 app.use('/api/ra-bills',      raBillRoutes);
 app.use('/api/analytics',     analyticsRoutes);

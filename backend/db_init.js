@@ -95,6 +95,30 @@ async function initDatabase() {
     `);
     console.log('  ✅ v_ra_bill_summary OK');
 
+    // ─────────────────────────────────────────
+    // VIEW: v_budget_vs_actual
+    // ─────────────────────────────────────────
+    await db.execute(`
+      CREATE OR REPLACE VIEW \`v_budget_vs_actual\` AS
+      SELECT
+        pb.project_id,
+        pb.budget_id,
+        bi.category,
+        SUM(bi.budgeted_amount)   AS total_budgeted,
+        SUM(bi.actual_amount)     AS total_actual,
+        SUM(bi.variance_amount)   AS total_variance,
+        COALESCE(pe.spent, 0)     AS total_expenses_recorded
+      FROM project_budgets pb
+      JOIN budget_items bi ON bi.budget_id = pb.budget_id
+      LEFT JOIN (
+        SELECT project_id, category, SUM(amount) AS spent
+        FROM project_expenses
+        GROUP BY project_id, category
+      ) pe ON pe.project_id = pb.project_id AND pe.category = bi.category
+      GROUP BY pb.project_id, pb.budget_id, bi.category, pe.spent
+    `);
+    console.log('  ✅ v_budget_vs_actual OK');
+
     console.log('✅ DB init complete.\n');
   } catch (err) {
     console.error('❌ DB init error:', err.message);

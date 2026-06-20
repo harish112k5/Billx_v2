@@ -13,7 +13,7 @@ import {
 import {
   FileText, TrendingUp, Wallet, DollarSign, AlertCircle,
   BarChart3, ListChecks, Upload, ChevronRight, Shield, Percent,
-  Building2, Calendar, Hash, TrendingDown
+  Building2, Calendar, Hash, TrendingDown, FileSpreadsheet
 } from 'lucide-react';
 
 const CustomTooltip = ({ active, payload, label }) => {
@@ -37,13 +37,20 @@ export default function ProjectDashboard() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [data, setData] = useState(null);
+  const [budgetData, setBudgetData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
     setLoading(true);
-    api.get(`/projects/${id}/dashboard`)
-      .then(r => setData(r.data.data))
+    Promise.all([
+      api.get(`/projects/${id}/dashboard`),
+      api.get(`/projects/${id}/budget`)
+    ])
+      .then(([dashboardRes, budgetRes]) => {
+        setData(dashboardRes.data.data);
+        setBudgetData(budgetRes.data.data);
+      })
       .catch(e => setError(e.response?.data?.error || 'Failed to load project'))
       .finally(() => setLoading(false));
   }, [id]);
@@ -141,10 +148,10 @@ export default function ProjectDashboard() {
         {/* Quick Navigation Links */}
         <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
           {[
+            { label: 'Budget',    icon: FileSpreadsheet, path: `/projects/${id}/budget`, color: 'var(--blue)' },
             { label: 'BOQ',       icon: ListChecks,   path: `/projects/${id}/boq`,       color: 'var(--amber)' },
-            { label: 'RA Bills',  icon: FileText,     path: `/projects/${id}/ra-bills`,  color: 'var(--blue)' },
-            { label: 'Analytics', icon: BarChart3,    path: `/projects/${id}/analytics`, color: 'var(--purple)' },
-            { label: 'Cash Flow', icon: TrendingUp,   path: `/projects/${id}/cashflow`,  color: 'var(--teal)' },
+            { label: 'RA Bills',  icon: FileText,     path: `/projects/${id}/ra-bills`,  color: 'var(--purple)' },
+            { label: 'Analytics', icon: BarChart3,    path: `/projects/${id}/analytics`, color: 'var(--teal)' },
             { label: 'Investors', icon: DollarSign,   path: `/projects/${id}/investors`, color: 'var(--green)' },
             { label: 'Expenses',  icon: TrendingDown, path: `/projects/${id}/expenses`,  color: 'var(--red)' },
           ].map(nav => (
@@ -165,6 +172,46 @@ export default function ProjectDashboard() {
             </Link>
           ))}
         </div>
+      </div>
+
+      {/* ── Section A.5: Budget Overview ─────────────────────────── */}
+      <div className="section-card" style={{ marginBottom: 16, padding: '16px 20px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <FileSpreadsheet size={16} color="var(--blue)" /> Project Budget Overview
+          </div>
+          <Link to={`/projects/${id}/budget`} className="btn btn-ghost btn-sm">
+            View Budget <ChevronRight size={14} />
+          </Link>
+        </div>
+        
+        {!budgetData ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 16, background: 'var(--surface-dark)', borderRadius: 8 }}>
+            <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>No budget envelope set up yet. Plan your costs before tracking expenses.</div>
+            <button className="btn btn-primary btn-sm" onClick={() => navigate(`/projects/${id}/budget`)}>Create Budget</button>
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase' }}>Status</div>
+              <div><span className={`badge badge-${budgetData.budget.status === 'approved' ? 'green' : 'amber'}`}>{budgetData.budget.status}</span></div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase' }}>Planned Envelope</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--blue)' }}>{fmtFull(budgetData.totals?.total_budgeted || 0)}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase' }}>Actuals (Budgeted)</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--amber)' }}>{fmtFull(budgetData.totals?.total_actual || 0)}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase' }}>Variance</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: (budgetData.totals?.total_variance || 0) < 0 ? 'var(--red)' : 'var(--green)' }}>
+                {fmtFull(budgetData.totals?.total_variance || 0)}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Section B Row 1: Progress ──────────────────────────── */}

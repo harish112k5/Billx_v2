@@ -1,5 +1,14 @@
 const mysql = require('mysql2');
-require('dotenv').config();
+const fs = require('fs');
+const path = require('path');
+
+// Load .env.local if it exists (for local development), otherwise load .env (for production/deployment)
+const envLocalPath = path.join(__dirname, '.env.local');
+if (fs.existsSync(envLocalPath)) {
+  require('dotenv').config({ path: envLocalPath });
+} else {
+  require('dotenv').config();
+}
 
 const pool = mysql.createPool({
   host:               process.env.DB_HOST     || 'localhost',

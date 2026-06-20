@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import { fmtFull } from '../components/KPICard';
-import { Upload, CheckCircle, AlertTriangle, ChevronRight, FileSpreadsheet, X } from 'lucide-react';
+import { Upload, CheckCircle, AlertTriangle, ChevronRight, FileSpreadsheet, X, ListChecks } from 'lucide-react';
 
 const STEPS = ['Select Project', 'Upload File', 'Review & Confirm'];
 
@@ -10,6 +10,7 @@ export default function ImportPage() {
   const navigate = useNavigate();
   const fileRef  = useRef(null);
   const [step, setStep]        = useState(0);
+  const [importType, setImportType] = useState('rabill'); // 'rabill' | 'budget'
   const [projects, setProjects]  = useState([]);
   const [contracts, setContracts] = useState([]);
   const [form, setForm] = useState({ project_id: '', contract_id: '' });
@@ -27,13 +28,13 @@ export default function ImportPage() {
   }, []);
 
   useEffect(() => {
-    if (form.project_id) {
+    if (form.project_id && importType === 'rabill') {
       api.get(`/projects/${form.project_id}/contracts`).then(r => {
         setContracts(r.data.data || []);
         setForm(f => ({ ...f, contract_id: '' }));
       });
     }
-  }, [form.project_id]);
+  }, [form.project_id, importType]);
 
   const handleFileSelect = async (selectedFile) => {
     if (!selectedFile) return;
@@ -43,16 +44,28 @@ export default function ImportPage() {
     }
     setFile(selectedFile);
     setUploading(true);
+
     try {
       const fd = new FormData();
       fd.append('file', selectedFile);
-      const res = await api.post('/import/preview', fd, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-      setPreview(res.data.data);
-      setFilePath(res.data.file_path);
-      setFileName(res.data.file_name);
-      setStep(2);
+      
+      if (importType === 'budget') {
+        // Direct import without preview for budget
+        fd.append('project_id', form.project_id);
+        const res = await api.post('/import/budget', fd, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        setResult(res.data);
+      } else {
+        // RA Bill preview flow
+        const res = await api.post('/import/preview', fd, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        setPreview(res.data.data);
+        setFilePath(res.data.file_path);
+        setFileName(res.data.file_name);
+        setStep(2);
+      }
     } catch (e) {
       alert('File upload failed: ' + (e.response?.data?.error || e.message));
     } finally {
@@ -87,27 +100,68 @@ export default function ImportPage() {
       <div className="page-header">
         <div>
           <div className="page-title">Import Excel</div>
-          <div className="page-subtitle">Import RA Bill Excel files to load BOQ and measurement data</div>
+          <div className="page-subtitle">Import Project Budgets or RA Bills to load your data</div>
         </div>
       </div>
 
       {/* Step Indicator */}
-      <div className="pipeline mb-24" style={{ justifyContent: 'center' }}>
-        {STEPS.map((s, i) => (
-          <div key={s} style={{ display: 'flex', alignItems: 'center' }}>
-            <div className={`pipeline-step ${i < step ? 'done' : i === step ? 'current' : 'pending'}`}>
-              {i < step ? <CheckCircle size={13} /> : <span>{i + 1}</span>}
-              {s}
-            </div>
-            {i < STEPS.length - 1 && <span className="pipeline-arrow">›</span>}
-          </div>
-        ))}
-      </div>
+      {!result && (
+        <div className="pipeline mb-24" style={{ justifyContent: 'center' }}>
+          {STEPS.map((s, i) => {
+            // Skip Step 2 for Budget
+            if (importType === 'budget' && i === 2) return null;
+            return (
+              <div key={s} style={{ display: 'flex', alignItems: 'center' }}>
+                <div className={`pipeline-step ${i < step ? 'done' : i === step ? 'current' : 'pending'}`}>
+                  {i < step ? <CheckCircle size={13} /> : <span>{i + 1}</span>}
+                  {s}
+                </div>
+                {i < (importType === 'budget' ? 1 : STEPS.length - 1) && <span className="pipeline-arrow">›</span>}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* ── Step 0: Select Project + Contract ─────────────── */}
       {step === 0 && !result && (
         <div className="section-card" style={{ maxWidth: 600, margin: '0 auto' }}>
-          <div className="section-title mb-16"><FileSpreadsheet /> Select Project &amp; Contract</div>
+          <div className="section-title mb-16"><FileSpreadsheet /> Select Import Destination</div>
+          
+          <div className="form-group">
+            <label className="form-label">Import Type</label>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button 
+                className={`btn ${importType === 'rabill' ? 'btn-primary' : 'btn-ghost'}`} 
+                style={{ flex: 1 }}
+                onClick={() => setImportType('rabill')}
+              >
+                <ListChecks size={14} /> RA Bill & Measurements
+              </button>
+              <button 
+                className={`btn ${importType === 'budget' ? 'btn-primary' : 'btn-ghost'}`} 
+                style={{ flex: 1 }}
+                onClick={() => setImportType('budget')}
+              >
+                <FileSpreadsheet size={14} /> Project Budget
+              </button>
+            </div>
+            {importType === 'budget' && (
+              <div style={{ marginTop: 12, textAlign: 'right' }}>
+                <a href="/budget_template.xlsx" download className="btn btn-ghost btn-sm" style={{ color: 'var(--blue)', display: 'inline-flex', alignItems: 'center' }}>
+                  <FileSpreadsheet size={14} style={{ marginRight: 6 }} /> Download Budget Template
+                </a>
+              </div>
+            )}
+            {importType === 'rabill' && (
+              <div style={{ marginTop: 12, textAlign: 'right' }}>
+                <a href="/rabill_template.xlsx" download className="btn btn-ghost btn-sm" style={{ color: 'var(--blue)', display: 'inline-flex', alignItems: 'center' }}>
+                  <FileSpreadsheet size={14} style={{ marginRight: 6 }} /> Download RA Bill / BOQ Template
+                </a>
+              </div>
+            )}
+          </div>
+
           <div className="form-group">
             <label className="form-label">Project</label>
             <select className="form-select" value={form.project_id} onChange={e => setForm(f => ({ ...f, project_id: e.target.value }))}>
@@ -115,16 +169,20 @@ export default function ImportPage() {
               {projects.map(p => <option key={p.project_id} value={p.project_id}>{p.project_code} — {p.project_name}</option>)}
             </select>
           </div>
-          <div className="form-group">
-            <label className="form-label">Contract</label>
-            <select className="form-select" value={form.contract_id} onChange={e => setForm(f => ({ ...f, contract_id: e.target.value }))} disabled={!form.project_id}>
-              <option value="">Select contract...</option>
-              {contracts.map(c => <option key={c.contract_id} value={c.contract_id}>{c.org_name} — {c.contract_type} (₹{parseFloat(c.contract_value).toLocaleString('en-IN')})</option>)}
-            </select>
-          </div>
+          
+          {importType === 'rabill' && (
+            <div className="form-group">
+              <label className="form-label">Contract</label>
+              <select className="form-select" value={form.contract_id} onChange={e => setForm(f => ({ ...f, contract_id: e.target.value }))} disabled={!form.project_id}>
+                <option value="">Select contract...</option>
+                {contracts.map(c => <option key={c.contract_id} value={c.contract_id}>{c.org_name} — {c.contract_type} (₹{parseFloat(c.contract_value).toLocaleString('en-IN')})</option>)}
+              </select>
+            </div>
+          )}
+          
           <button
             className="btn btn-primary"
-            disabled={!form.project_id || !form.contract_id}
+            disabled={!form.project_id || (importType === 'rabill' && !form.contract_id)}
             onClick={() => setStep(1)}
             style={{ width: '100%', justifyContent: 'center' }}
           >
@@ -136,7 +194,7 @@ export default function ImportPage() {
       {/* ── Step 1: Upload ─────────────────────────────────── */}
       {step === 1 && !result && (
         <div className="section-card" style={{ maxWidth: 600, margin: '0 auto' }}>
-          <div className="section-title mb-16"><Upload /> Upload RA Bill Excel</div>
+          <div className="section-title mb-16"><Upload /> Upload {importType === 'budget' ? 'Budget' : 'RA Bill'} Excel</div>
           <div
             className={`upload-zone ${drag ? 'drag-over' : ''}`}
             onClick={() => fileRef.current?.click()}
@@ -152,22 +210,22 @@ export default function ImportPage() {
               onChange={e => handleFileSelect(e.target.files[0])} />
             <FileSpreadsheet size={40} style={{ margin: '0 auto 12px', display: 'block', color: 'var(--amber)' }} />
             <div className="upload-title">Drop your Excel file here or click to browse</div>
-            <div className="upload-sub">Supports .xlsx files up to 50MB · TKTR-NIP format compatible</div>
+            <div className="upload-sub">Supports .xlsx files up to 50MB</div>
             {uploading && (
               <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--amber)' }}>
                 <div className="loader" style={{ width: 18, height: 18, borderWidth: 2 }} />
-                Parsing Excel file...
+                {importType === 'budget' ? 'Importing Budget...' : 'Parsing Excel file...'}
               </div>
             )}
           </div>
-          <button className="btn btn-ghost btn-sm" style={{ marginTop: 12 }} onClick={() => setStep(0)}>
+          <button className="btn btn-ghost btn-sm" style={{ marginTop: 12 }} onClick={() => setStep(0)} disabled={uploading}>
             ← Back
           </button>
         </div>
       )}
 
-      {/* ── Step 2: Preview & Confirm ──────────────────────── */}
-      {step === 2 && preview && !result && (
+      {/* ── Step 2: Preview & Confirm (RA Bills only) ──────── */}
+      {step === 2 && preview && !result && importType === 'rabill' && (
         <div className="section-card" style={{ maxWidth: 800, margin: '0 auto' }}>
           <div className="section-title mb-16"><CheckCircle color="var(--green)" /> File Parsed — Review &amp; Confirm</div>
 
@@ -223,36 +281,6 @@ export default function ImportPage() {
             </div>
           )}
 
-          {/* BOQ Sample */}
-          {preview.boq_sample?.length > 0 && (
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>
-                Preview: First {preview.boq_sample.length} BOQ Items
-              </div>
-              <div style={{ overflowX: 'auto' }}>
-                <table className="data-table">
-                  <thead>
-                    <tr><th>Code</th><th>Description</th><th>Unit</th><th>Plan Qty</th><th>Rate</th><th>This Bill Qty</th></tr>
-                  </thead>
-                  <tbody>
-                    {preview.boq_sample.map((item, i) => (
-                      <tr key={i}>
-                        <td className="mono" style={{ color: 'var(--amber)', fontSize: 11 }}>{item.item_code}</td>
-                        <td style={{ maxWidth: 200, overflow: 'hidden' }}>
-                          <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.description}</div>
-                        </td>
-                        <td>{item.unit}</td>
-                        <td className="mono">{item.planned_quantity}</td>
-                        <td className="mono">₹{item.unit_rate}</td>
-                        <td className="mono" style={{ color: 'var(--amber)' }}>{item.qty_this_bill}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
           <div style={{ display: 'flex', gap: 10 }}>
             <button className="btn btn-ghost" onClick={() => setStep(1)}>← Re-upload</button>
             <button
@@ -277,17 +305,30 @@ export default function ImportPage() {
             <div className="page-title">Import Successful!</div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
-            {[
-              { label: 'RA Bill Created', value: result.ra_bill?.ra_number ? `RA-${String(result.ra_bill.ra_number).padStart(2,'0')}` : '—', color: 'var(--amber)' },
-              { label: 'BOQ Items', value: result.stats?.boq_items_processed || 0 },
-              { label: 'Measurements', value: result.stats?.measurements_processed || 0 },
-            ].map(d => (
-              <div key={d.label} style={{ padding: 14, background: 'var(--surface-dark)', borderRadius: 'var(--radius)' }}>
-                <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>{d.label}</div>
-                <div style={{ fontFamily: 'Rajdhani,sans-serif', fontSize: 20, fontWeight: 700, color: d.color || 'var(--green)' }}>{d.value}</div>
-              </div>
-            ))}
+          <div style={{ display: 'grid', gridTemplateColumns: importType === 'budget' ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
+            {importType === 'budget' ? (
+              <>
+                <div style={{ padding: 14, background: 'var(--surface-dark)', borderRadius: 'var(--radius)' }}>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Total Budgeted</div>
+                  <div style={{ fontFamily: 'Rajdhani,sans-serif', fontSize: 20, fontWeight: 700, color: 'var(--blue)' }}>{fmtFull(result.summary?.totals?.total_budgeted)}</div>
+                </div>
+                <div style={{ padding: 14, background: 'var(--surface-dark)', borderRadius: 'var(--radius)' }}>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Items Imported</div>
+                  <div style={{ fontFamily: 'Rajdhani,sans-serif', fontSize: 20, fontWeight: 700, color: 'var(--green)' }}>{result.summary?.items?.length || 0}</div>
+                </div>
+              </>
+            ) : (
+              [
+                { label: 'RA Bill Created', value: result.ra_bill?.ra_number ? `RA-${String(result.ra_bill.ra_number).padStart(2,'0')}` : '—', color: 'var(--amber)' },
+                { label: 'BOQ Items', value: result.stats?.boq_items_processed || 0 },
+                { label: 'Measurements', value: result.stats?.measurements_processed || 0 },
+              ].map(d => (
+                <div key={d.label} style={{ padding: 14, background: 'var(--surface-dark)', borderRadius: 'var(--radius)' }}>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>{d.label}</div>
+                  <div style={{ fontFamily: 'Rajdhani,sans-serif', fontSize: 20, fontWeight: 700, color: d.color || 'var(--green)' }}>{d.value}</div>
+                </div>
+              ))
+            )}
           </div>
 
           {result.stats?.errors?.length > 0 && (
@@ -304,8 +345,8 @@ export default function ImportPage() {
 
           <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
             <button className="btn btn-ghost" onClick={reset}>Import Another</button>
-            <button className="btn btn-primary" onClick={() => navigate(`/projects/${form.project_id}`)}>
-              View Project Dashboard <ChevronRight size={14} />
+            <button className="btn btn-primary" onClick={() => navigate(importType === 'budget' ? `/projects/${form.project_id}/budget` : `/projects/${form.project_id}`)}>
+              {importType === 'budget' ? 'View Budget Details' : 'View Project Dashboard'} <ChevronRight size={14} />
             </button>
           </div>
         </div>

@@ -31,7 +31,7 @@ export default function CreateProject() {
     try {
       const payload = { ...form, subcontractor_ids: subcontractorIds.filter(Boolean) };
       const res = await api.post('/projects', payload);
-      navigate(`/projects/${res.data.project_id}`);
+      navigate(`/projects/${res.data.project_id}/budget`);
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to create project');
     } finally {

@@ -9,6 +9,7 @@ import ProjectDashboard  from './pages/ProjectDashboard';
 import BOQPage           from './pages/BOQPage';
 import RABillsList       from './pages/RABillsList';
 import RABillDetail      from './pages/RABillDetail';
+import BudgetPage        from './pages/BudgetPage';
 import AnalyticsPage     from './pages/AnalyticsPage';
 import CashFlowPage      from './pages/CashFlowPage';
 import InvestorPage      from './pages/InvestorPage';
@@ -78,6 +79,7 @@ export default function App() {
           <Route path="/projects/new" element={<ProtectedRoute><CreateProject /></ProtectedRoute>} />
           <Route path="/projects/:id/edit" element={<ProtectedRoute><EditProject /></ProtectedRoute>} />
           <Route path="/projects/:id" element={<ProtectedRoute><ProjectDashboard /></ProtectedRoute>} />
+          <Route path="/projects/:id/budget" element={<ProtectedRoute><BudgetPage /></ProtectedRoute>} />
           <Route path="/projects/:id/boq" element={<ProtectedRoute><BOQPage /></ProtectedRoute>} />
           <Route path="/projects/:id/ra-bills" element={<ProtectedRoute><RABillsList /></ProtectedRoute>} />
           <Route path="/projects/:id/ra-bills/new" element={<ProtectedRoute><CreateRABill /></ProtectedRoute>} />

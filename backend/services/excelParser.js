@@ -497,4 +497,107 @@ function formatDate(val) {
   return null;
 }
 
-module.exports = { parsePreview, parseFullFile };
+// ─────────────────────────────────────────────────────────────────
+// Budget Sheet Parser
+// ─────────────────────────────────────────────────────────────────
+function parseBudgetExcel(filePath) {
+  const workbook = XLSX.readFile(filePath, {
+    cellDates: true,
+    raw: false,
+    dateNF: 'yyyy-mm-dd'
+  });
+
+  const sheetName = workbook.SheetNames.find(n => n.toLowerCase().includes('budget')) || workbook.SheetNames[0];
+  const sheet = workbook.Sheets[sheetName];
+  if (!sheet) throw new Error('Could not find a valid sheet in the Excel file');
+
+  const data = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
+
+  const header = {
+    project_name: '',
+    department: '',
+    supervisor_name: ''
+  };
+
+  // Extract header block (A3:B5 usually, but we search just in case)
+  for (let i = 0; i < Math.min(10, data.length); i++) {
+    const row = data[i];
+    const colA = (row[0] || '').toString().toLowerCase().trim();
+    if (colA.includes('project name')) header.project_name = (row[1] || '').toString().trim();
+    if (colA.includes('department')) header.department = (row[1] || '').toString().trim();
+    if (colA.includes('supervisor')) header.supervisor_name = (row[1] || '').toString().trim();
+  }
+
+  // Find data start
+  let dataStart = -1;
+  for (let i = 0; i < data.length; i++) {
+    const colB = (data[i][1] || '').toString().toLowerCase().trim();
+    if (colB === 'project tasks') {
+      dataStart = i + 1; // start reading from next row
+      break;
+    }
+  }
+
+  if (dataStart === -1) {
+    throw new Error("This doesn't look like a Budget template — couldn't find the task table header.");
+  }
+
+  const items = [];
+  const errors = [];
+  const parseNum = (v) => parseFloat((v || '0').toString().replace(/,/g, '')) || 0;
+  const isNumberString = (v) => v !== '' && !isNaN(parseFloat(v.toString().replace(/,/g, '')));
+  const checkNumeric = (rowIdx, colName, colIdx, row) => {
+    const val = (row[colIdx] || '').toString().trim();
+    if (val !== '' && !isNumberString(val)) {
+      errors.push(`Row ${rowIdx + 1}, ${colName} contains text, expected a number.`);
+    }
+  };
+
+  for (let i = dataStart; i < data.length; i++) {
+    const row = data[i];
+    const taskName = (row[1] || '').toString().trim();
+    
+    // Stop condition
+    if (!taskName || taskName.toLowerCase().includes('subtotal')) {
+      break;
+    }
+
+    const wbsCode = (row[0] || '').toString().trim();
+    
+    // Validate numeric columns
+    checkNumeric(i, 'Planned Hours', 3, row);
+    checkNumeric(i, 'Actual Hours', 4, row);
+    checkNumeric(i, 'Labor Rate', 5, row);
+    checkNumeric(i, 'Planned Material Units', 6, row);
+    checkNumeric(i, 'Material Rate', 7, row);
+    checkNumeric(i, 'Travel Cost', 8, row);
+    checkNumeric(i, 'Equipment Cost', 9, row);
+    checkNumeric(i, 'Fixed Cost', 10, row);
+    checkNumeric(i, 'Misc Cost', 11, row);
+
+    items.push({
+      wbs_code: wbsCode,
+      task_name: taskName,
+      assigned_to: (row[2] || '').toString().trim(),
+      planned_hours: parseNum(row[3]),
+      actual_hours: parseNum(row[4]),
+      labor_rate: parseNum(row[5]),
+      planned_material_units: parseNum(row[6]),
+      material_rate: parseNum(row[7]), // Using actual_material_units column? Wait, spec: Col G is Planned Material Units, Col H is Material Rate. But the spec says: G=planned_material_units, H=material_rate. Wait, the schema has actual_material_units too. The excel template only has UNITS (G) and INR/UNITS (H).
+      // If template only has planned_material_units, actual_material_units is 0 for import.
+      actual_material_units: 0,
+      travel_cost: parseNum(row[8]),
+      equipment_cost: parseNum(row[9]),
+      fixed_cost: parseNum(row[10]),
+      misc_cost: parseNum(row[11]),
+    });
+  }
+
+  if (errors.length > 0) {
+    throw new Error(errors.join('\\n'));
+  }
+
+  return { header, items };
+}
+
+module.exports = { parsePreview, parseFullFile, parseBudgetExcel };

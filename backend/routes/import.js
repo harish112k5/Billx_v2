@@ -103,6 +103,40 @@ router.post('/ra-bill', verifyToken, async (req, res) => {
   }
 });
 
+// POST /api/import/budget
+router.post('/budget', verifyToken, upload.single('file'), async (req, res) => {
+  try {
+    const { project_id } = req.body;
+    if (!project_id || !req.file) {
+      return res.status(400).json({ success: false, error: 'project_id and file are required' });
+    }
+
+    const import_id = uuidv4();
+
+    // Create import log entry
+    await db.execute(
+      `INSERT INTO excel_imports (import_id, project_id, import_type, file_name, status, imported_by)
+       VALUES (?,?,'budget',?,?,?)`,
+      [import_id, project_id, req.file.originalname, 'processing', req.user.user_id]
+    );
+
+    const summary = await importPipeline.runBudgetImport({
+      project_id, file_path: req.file.path, import_id, imported_by: req.user.user_id
+    });
+
+    await db.execute(
+      `UPDATE excel_imports SET status='completed', completed_at=NOW() WHERE import_id=?`,
+      [import_id]
+    );
+
+    res.json({ success: true, import_id, summary });
+
+  } catch (err) {
+    console.error('Budget import error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // GET /api/import/history/:project_id
 router.get('/history/:project_id', verifyToken, async (req, res) => {
   try {
