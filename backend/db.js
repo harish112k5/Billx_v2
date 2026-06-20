@@ -12,8 +12,7 @@ const pool = mysql.createPool({
   queueLimit:         0,
   dateStrings:        true,
   timezone:           '+05:30',
-  charset:            'utf8mb4',
-  collation:          'utf8mb4_unicode_ci',
+  charset:            'UTF8MB4_UNICODE_CI',
   ssl:                process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
 });
 
