@@ -3,6 +3,7 @@ const express  = require('express');
 const cors     = require('cors');
 const path     = require('path');
 const fs       = require('fs');
+const initDatabase = require('./db_init');
 
 const app = express();
 
@@ -65,7 +66,8 @@ app.use((err, req, res, next) => {
 
 // ── Start ─────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`🚀 BillX V2 API running on http://localhost:${PORT}`);
   console.log(`📁 Upload directory: ${uploadDir}`);
+  await initDatabase();
 });
