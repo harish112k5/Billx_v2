@@ -18,8 +18,13 @@ router.get('/', verifyToken, async (req, res) => {
        LEFT JOIN users u          ON p.created_by = u.user_id
        LEFT JOIN ra_bills r       ON r.project_id  = p.project_id
        LEFT JOIN boq_items b      ON b.project_id  = p.project_id
-       GROUP BY p.project_id
-       ORDER BY p.created_at DESC`
+        GROUP BY 
+          p.project_id, p.project_name, p.project_code, p.description, 
+          p.contract_value, p.start_date, p.expected_end_date, 
+          p.actual_end_date, p.status, p.client_id, 
+          p.main_contractor_id, p.location, p.created_by, 
+          p.created_at, p.updated_at, u.name
+        ORDER BY p.created_at DESC`
     );
     res.json({ success: true, data: rows });
   } catch (err) {
