@@ -55,6 +55,31 @@
   --shadow:            0 4px 24px rgba(0,0,0,0.4);
   --shadow-sm:         0 2px 8px rgba(0,0,0,0.3);
   --transition:        all 0.2s cubic-bezier(0.4,0,0.2,1);
+
+  /* Hero Banner Gradient */
+  --hero-bg-1:         #12121A;
+  --hero-bg-2:         #16162A;
+  --hero-bg-3:         #1A1625;
+}
+
+/* Light Theme Overrides */
+body[data-theme="light"] {
+  --bg-dark:           #F8F9FA;
+  --card-dark:         #FFFFFF;
+  --border-dark:       #E2E8F0;
+  --sidebar-dark:      #FFFFFF;
+  --surface-dark:      #F1F5F9;
+  --surface-hover:     #E2E8F0;
+  --text-primary:      #0F172A;
+  --text-secondary:    #334155;
+  --text-muted:        #64748B;
+  --shadow:            0 4px 24px rgba(0,0,0,0.08);
+  --shadow-sm:         0 2px 8px rgba(0,0,0,0.05);
+  
+  /* Hero Banner Gradient */
+  --hero-bg-1:         #FFFFFF;
+  --hero-bg-2:         #F8F9FA;
+  --hero-bg-3:         #F1F5F9;
 }
 
 /* ── Reset ─────────────────────────────────────────────────── */
@@ -202,7 +227,7 @@ input, select, textarea { font-family: var(--font-body); }
 
 /* ── Hero Banner ────────────────────────────────────────────── */
 .hero-banner {
-  background: linear-gradient(135deg, #12121A 0%, #16162A 50%, #1A1625 100%);
+  background: linear-gradient(135deg, var(--hero-bg-1) 0%, var(--hero-bg-2) 50%, var(--hero-bg-3) 100%);
   border:     1px solid var(--border-dark);
   border-radius: var(--radius-lg);
   padding:    24px 28px;

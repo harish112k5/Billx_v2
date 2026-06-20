@@ -13,6 +13,7 @@ const pool = mysql.createPool({
   dateStrings:        true,
   timezone:           '+05:30',
   charset:            'utf8mb4',
+  ssl:                process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
 });
 
 const promisePool = pool.promise();
