@@ -71,7 +71,7 @@ router.get('/contractor/:org_id', verifyToken, async (req, res) => {
        JOIN projects p ON pc.project_id = p.project_id
        LEFT JOIN ra_bills r ON r.contract_id = pc.contract_id
        WHERE pc.organization_id = ?
-       GROUP BY p.project_id, pc.contract_id`,
+       GROUP BY p.project_id, p.project_name, p.project_code, p.contract_value, p.status, pc.contract_id, pc.contract_value`,
       [req.params.org_id]
     );
     res.json({ success: true, data: projects });
@@ -111,7 +111,7 @@ router.get('/investor/:investor_id', verifyToken, async (req, res) => {
        JOIN projects p ON i.project_id = p.project_id
        LEFT JOIN ra_bills r ON r.project_id = p.project_id
        WHERE i.investor_id = ?
-       GROUP BY i.investment_id`,
+       GROUP BY i.investment_id, i.project_id, i.investor_id, i.amount, i.investment_date, i.return_type, i.expected_return, i.return_percent, i.billing_milestone, i.repaid_amount, i.repayment_date, i.status, i.notes, i.created_at, p.project_name, p.project_code, p.status`,
       [req.params.investor_id]
     );
     res.json({ success: true, data: investments });

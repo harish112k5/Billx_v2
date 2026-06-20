@@ -22,7 +22,10 @@ async function getProjectDashboard(project_id) {
      LEFT JOIN project_contracts pc ON pc.project_id = p.project_id
      LEFT JOIN organizations o ON pc.organization_id = o.organization_id
      WHERE p.project_id = ?
-     GROUP BY p.project_id`,
+     GROUP BY p.project_id, p.project_code, p.project_name, p.project_location,
+              p.client_name, p.work_order_number, p.work_order_date,
+              p.contract_value, p.start_date, p.end_date, p.status, p.description,
+              p.created_by, p.created_at, p.updated_at`,
     [project_id]
   );
   if (!projectRows.length) throw new Error('Project not found');
@@ -98,7 +101,7 @@ async function getProjectDashboard(project_id) {
      FROM project_contracts pc JOIN organizations o ON pc.organization_id=o.organization_id
      LEFT JOIN boq_allocations a ON a.organization_id=o.organization_id
      WHERE pc.project_id=? AND pc.contract_type='subcontract'
-     GROUP BY pc.contract_id`, [project_id]
+     GROUP BY pc.contract_id, o.org_name, o.org_type`, [project_id]
   );
 
   if (mainContracts.length === 0 && subContracts.length > 0) {

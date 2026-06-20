@@ -15,7 +15,7 @@ router.get('/', verifyToken, async (req, res) => {
        FROM investors i
        LEFT JOIN users u ON i.user_id = u.user_id
        LEFT JOIN investments inv ON inv.investor_id = i.investor_id
-       GROUP BY i.investor_id
+       GROUP BY i.investor_id, i.name, i.investor_type, i.contact_phone, i.contact_email, i.pan_number, i.address, i.user_id, i.created_at, u.name
        ORDER BY i.name`
     );
     res.json({ success: true, data: rows });
