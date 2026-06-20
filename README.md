@@ -1,180 +1,140 @@
 # BillX V2 — Construction Intelligence Platform
 
-A full-stack construction billing management system for tracking RA bills, BOQ progress, expenses, investments, and cash flow.
+A full-stack construction project management system for tracking BOQ (Bill of Quantities) and RA Bills (Running Account Bills).
 
-## Tech Stack
-
-| Layer     | Technology                |
-|-----------|---------------------------|
-| Frontend  | React 19 + Vite + Recharts |
-| Backend   | Node.js + Express 4       |
-| Database  | MySQL 8.x                 |
-| Auth      | JWT (bcrypt passwords)     |
-| Excel     | SheetJS (xlsx library)    |
+**Stack:** Node.js + Express + MySQL + React 19 (Vite)
 
 ---
 
-## Quick Start
+## Quick Start (New Machine Setup)
 
-### 1. Database Setup
+### Prerequisites
+- Node.js v18+ 
+- MySQL 8.0+
+- Git
+
+---
+
+### Step 1 — Clone the repository
 
 ```bash
-# Create the DB and tables
-mysql -u root -p < backend/db/schema.sql
-
-# Insert demo users and sample project
-mysql -u root -p < backend/db/seed.sql
+git clone https://github.com/harish112k5/Billx_v2.git
+cd Billx_v2
+git checkout sudharsan
 ```
 
-### 2. Backend Setup
+---
+
+### Step 2 — Set up the Database
+
+Import the database schema and seed data:
+
+```bash
+# Create the database
+mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS billx_v2;"
+
+# Import the full schema + seed data
+mysql -u root -p billx_v2 < database_backup.sql
+```
+
+> **Windows users (XAMPP):**
+> ```
+> C:\xampp\mysql\bin\mysql.exe -u root billx_v2 < database_backup.sql
+> ```
+
+---
+
+### Step 3 — Configure Backend Environment
 
 ```bash
 cd backend
-
-# Copy environment (edit DB credentials if needed)
-# Default: DB_USER=root, DB_PASSWORD=, DB_NAME=billx_v2
-
-npm install
-npm run dev    # Starts on http://localhost:5000
+cp .env.example .env
 ```
 
-### 3. Frontend Setup
+Now open `backend/.env` and fill in your values:
+
+```env
+PORT=5000
+DB_HOST=localhost
+DB_USER=root
+DB_PASSWORD=your_mysql_password
+DB_NAME=billx_v2
+JWT_SECRET=any_long_random_string_here
+```
+
+---
+
+### Step 4 — Install Dependencies
 
 ```bash
-cd frontend
+# Install backend dependencies
+cd backend
 npm install
-npm run dev    # Starts on http://localhost:5173
+
+# Install frontend dependencies
+cd ../frontend
+npm install
 ```
 
 ---
 
-## Demo Login Credentials
+### Step 5 — Run the Application
 
-| Role         | Email                  | Password   |
-|--------------|------------------------|------------|
-| Super Admin  | admin@billx.com        | `password` |
-| Manager      | manager@billx.com      | `password` |
-| Engineer     | engineer@billx.com     | `password` |
+Open **two terminals**:
+
+**Terminal 1 — Backend:**
+```bash
+cd backend
+npm run dev
+# Server runs at http://localhost:5000
+```
+
+**Terminal 2 — Frontend:**
+```bash
+cd frontend
+npm run dev
+# App runs at http://localhost:5173
+```
 
 ---
 
-## Key Features
+### Step 6 — Login
 
-### 📄 RA Bill Management
-- Import Excel RA bills (TKTR-NIP format, 86-sheet structure)
-- Abstract sheet auto-parsing (financial figures)
-- BOQ sheet parsing (82+ items with planned/executed quantities)
-- Measurement book data (numbered sheets: 10, 20, 30...)
-- Non-BOQ item tracking
-- Stage workflow: Draft → Submitted → Certified → Paid
+Open your browser at `http://localhost:5173`
 
-### 📊 Project Dashboard
-- Hero banner with project KPIs
-- BOQ completion donut chart
-- RA Bill progression bar chart
-- Billing summary (gross, net payable, received, pending)
-- Deductions breakdown (retention, TDS, labour cess)
-- Sandwich layer view (main + sub contractors)
-
-### 📈 Analytics
-- BOQ category breakdown (planned vs executed)
-- RA bill trend analysis
-- BOQ item status distribution pie
-
-### 💰 Cash Flow
-- Payment inflow / outflow timeline
-- Running net position line chart
-
-### 👥 Investor Dashboard
-- Investment tracking with ROI calculation
-- Return types: Fixed, Profit Share, Billing Based
-- Project health snapshot for investors
-
-### 💸 Expenses
-- Per-project expense tracking
-- Categories: Labour, Material, Equipment, Overhead, Transport, Other
-- Payment status tracking
-- Category breakdown pie chart
-
-### 🏗️ Organizations
-- Multi-org support (Main Contractor, Subcontractor, Owner, Consultant)
-- Sandwich layer architecture (BOQ allocations)
-
-### ⚙️ Admin Panel
-- System stats
-- User management
+| Role | Email | Password |
+|------|-------|----------|
+| Super Admin | admin@billx.com | password |
+| Manager | manager@billx.com | password |
+| Engineer | engineer@billx.com | password |
 
 ---
 
 ## Project Structure
 
 ```
-billx-v2/
+billxv2/
 ├── backend/
-│   ├── db/
-│   │   ├── schema.sql     ← DB tables & views
-│   │   └── seed.sql       ← Demo data (run after schema)
-│   ├── middleware/
-│   │   └── auth.js        ← JWT verification
-│   ├── routes/
-│   │   ├── auth.js        ← Login, register, /me
-│   │   ├── projects.js    ← CRUD + dashboard API
-│   │   ├── contracts.js   ← Project contracts
-│   │   ├── boq.js         ← BOQ items + measurements
-│   │   ├── raBills.js     ← RA bill CRUD + certify/pay
-│   │   ├── analytics.js   ← Charts data endpoints
-│   │   ├── import.js      ← Excel upload + import pipeline
-│   │   ├── investors.js   ← Investors + investments
-│   │   ├── expenses.js    ← Project expenses
-│   │   ├── organizations.js
-│   │   └── admin.js       ← Admin stats + users
+│   ├── server.js              # Express entry point (port 5000)
+│   ├── db.js                  # MySQL connection pool
+│   ├── .env.example           # Environment variable template
+│   ├── middleware/auth.js     # JWT verification middleware
+│   ├── routes/                # All API route files
 │   ├── services/
-│   │   ├── analyticsEngine.js  ← Dashboard calculations
-│   │   ├── excelParser.js      ← XLSX parsing logic
-│   │   └── importPipeline.js   ← Atomic import transaction
-│   ├── db.js              ← MySQL connection pool
-│   ├── server.js          ← Express app entry point
-│   └── .env               ← Environment variables
-└── frontend/
-    └── src/
-        ├── api/axios.js   ← Axios with JWT interceptor
-        ├── components/
-        │   ├── Sidebar.jsx
-        │   ├── KPICard.jsx  (+ fmt, fmtFull, fmtNum exports)
-        │   ├── BOQTable.jsx
-        │   ├── RABillSummary.jsx
-        │   ├── ProgressDonut.jsx
-        │   └── SandwichView.jsx
-        ├── pages/
-        │   ├── LoginPage.jsx
-        │   ├── Dashboard.jsx       ← All projects summary
-        │   ├── ProjectsList.jsx    ← Project card grid
-        │   ├── CreateProject.jsx
-        │   ├── ProjectDashboard.jsx ← Per-project KPIs
-        │   ├── BOQPage.jsx         ← BOQ with measurement drill-down
-        │   ├── RABillsList.jsx
-        │   ├── RABillDetail.jsx    ← Abstract, Items, Measurements tabs
-        │   ├── AnalyticsPage.jsx
-        │   ├── CashFlowPage.jsx
-        │   ├── InvestorPage.jsx
-        │   ├── ExpensesPage.jsx    ← Per-project expenses
-        │   ├── ImportPage.jsx      ← 3-step Excel import wizard
-        │   ├── OrganizationsPage.jsx
-        │   └── AdminPanel.jsx
-        ├── App.jsx        ← Routes + Auth context
-        └── index.css      ← Design system (dark theme)
+│   │   ├── excelParser.js     # Excel → JSON parsing
+│   │   └── importPipeline.js  # Atomic DB import transaction
+│   └── uploads/excel/         # Uploaded Excel files (auto-created)
+│
+├── frontend/
+│   └── src/
+│       ├── App.jsx            # Root router + Auth context
+│       ├── api/axios.js       # Axios client with JWT interceptor
+│       ├── pages/             # All 17 page components
+│       └── components/        # 7 shared components
+│
+├── database_backup.sql        # Full MySQL schema + seed data
+└── test_data/                 # Sample RA Bill Excel files for testing
 ```
-
----
-
-## Excel Import Format (TKTR-NIP Structure)
-
-Supported sheet names:
-- `Abstract` — Project info + financial summary
-- `BOQ` — Bill of quantities (82 items, cols A–M)
-- `10`, `20`, `30`... — Measurement sheets per BOQ item
-- `Non BOQ` — Extra items beyond original scope
-- `*-Actual` — Actual measurement verification
 
 ---
 
@@ -182,18 +142,52 @@ Supported sheet names:
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/auth/login` | Login |
-| GET | `/api/projects` | All projects |
-| GET | `/api/projects/:id/dashboard` | Dashboard data |
-| GET | `/api/projects/:id/boq` | BOQ items |
-| GET | `/api/projects/:id/ra-bills` | RA bills list |
-| GET | `/api/ra-bills/:id` | RA bill detail |
-| GET | `/api/ra-bills/:id/measurements` | Measurements |
-| POST | `/api/import/preview` | Preview Excel |
-| POST | `/api/import/ra-bill` | Confirm import |
-| GET | `/api/analytics/project/:id` | Analytics data |
-| GET | `/api/analytics/project/:id/cashflow` | Cash flow |
-| GET | `/api/projects/:id/expenses` | Expenses |
-| POST | `/api/projects/:id/expenses` | Add expense |
-| GET | `/api/projects/:id/investments` | Investments |
-| POST | `/api/investors` | Create investor |
+| POST | `/api/auth/login` | Login → JWT token |
+| GET | `/api/projects` | List all projects |
+| GET | `/api/projects/:id/dashboard` | Full project analytics |
+| GET | `/api/projects/:id/boq` | BOQ items with progress |
+| POST | `/api/import/preview` | Excel preview (no DB write) |
+| POST | `/api/import/ra-bill` | Confirm Excel import |
+| GET | `/api/ra-bills/:id/measurements` | Measurement records |
+
+---
+
+## Importing an RA Bill Excel File
+
+1. Navigate to **Import Excel** in the sidebar
+2. Select your Project and Contractor
+3. Upload a `.xlsx` file (see `test_data/` for examples)
+4. Review the Preview
+5. Click **Confirm Import**
+
+### Excel Sheet Structure Expected:
+| Sheet Name | Purpose |
+|------------|---------|
+| `Abstract` | Financial summary + RA number |
+| `BOQ` | Bill of Quantities line items |
+| `1001`, `1002`... | Measurement detail sheets (numeric names match `item_code`) |
+| `Non BOQ` | Extra-scope work items |
+
+---
+
+## Known Fixes Applied (sudharsan branch)
+
+| Fix | Description |
+|-----|-------------|
+| JWT fallback | `JWT_SECRET` falls back to a default if `.env` is missing |
+| Measurement sheet detection | Regex `/^\d+$/` detects ALL numeric sheet names (not just multiples of 10) |
+| Measurement BOQ lookup | Now looks up by `item_code` (not `item_number`) — critical fix |
+| Excel serial date parsing | Converts Excel serial dates (e.g. `45791.77`) to `YYYY-MM-DD` |
+| Sandwich Layer | Auto-promotes subcontractor if no main contractor assigned |
+
+---
+
+## Deployment
+
+### Backend (Render)
+- Uses `render.yaml` — auto-detected on push
+- Set environment variables in Render dashboard
+
+### Frontend (Vercel)
+- Uses `frontend/vercel.json` for SPA routing
+- Set `VITE_API_URL=https://your-backend.onrender.com/api` in Vercel environment

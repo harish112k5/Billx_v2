@@ -13,7 +13,7 @@ const verifyToken = async (req, res, next) => {
 
   const token = header.split(' ')[1];
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'default_fallback_secret');
     // Refresh user from DB to get current role/active status
     const [rows] = await db.execute(
       'SELECT user_id, organization_id, name, email, role, is_active FROM users WHERE user_id = ?',
