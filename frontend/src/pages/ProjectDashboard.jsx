@@ -69,6 +69,16 @@ export default function ProjectDashboard() {
     </div>
   );
 
+  const handleDeleteProject = async () => {
+    if (!window.confirm('Are you sure you want to delete this project and ALL its data (BOQs, Expenses, RA Bills, etc.)? This action cannot be undone.')) return;
+    try {
+      await api.delete(`/projects/${id}`);
+      navigate('/dashboard');
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to delete project');
+    }
+  };
+
   if (!data) return null;
 
   const { project, planning, execution, billing, variance, ra_progression, top_boq_items, sandwich } = data;
@@ -100,6 +110,13 @@ export default function ProjectDashboard() {
                 style={{ padding: '2px 8px', height: 'auto', fontSize: 11 }}
               >
                 Edit
+              </button>
+              <button 
+                className="btn btn-ghost btn-sm" 
+                onClick={handleDeleteProject}
+                style={{ padding: '2px 8px', height: 'auto', fontSize: 11, color: 'var(--red)', borderColor: 'rgba(239,68,68,0.2)' }}
+              >
+                Delete
               </button>
             </div>
             <div className="hero-project-name">{project.project_name}</div>

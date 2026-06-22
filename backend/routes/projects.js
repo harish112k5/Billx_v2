@@ -423,5 +423,57 @@ router.put('/:id', verifyToken, async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
+// DELETE /api/projects/:id — Delete a project and all its associated data
+router.delete('/:id', verifyToken, async (req, res) => {
+  const conn = await db.getConnection();
+  await conn.beginTransaction();
+  try {
+    const projectId = req.params.id;
+
+    // Delete in dependency order (children first)
+    // 1. measurements
+    await conn.execute(
+      `DELETE m FROM measurements m 
+       JOIN ra_bills rb ON m.ra_bill_id = rb.ra_bill_id 
+       WHERE rb.project_id = ?`, [projectId]
+    );
+    // 2. ra_bill_items
+    await conn.execute(
+      `DELETE ri FROM ra_bill_items ri 
+       JOIN ra_bills rb ON ri.ra_bill_id = rb.ra_bill_id 
+       WHERE rb.project_id = ?`, [projectId]
+    );
+    // 3. excel_imports (if any)
+    await conn.execute('DELETE FROM excel_imports WHERE project_id = ?', [projectId]);
+    // 4. ra_bills
+    await conn.execute('DELETE FROM ra_bills WHERE project_id = ?', [projectId]);
+    // 5. project_expenses
+    await conn.execute('DELETE FROM project_expenses WHERE project_id = ?', [projectId]);
+    // 6. budget_items
+    await conn.execute(
+      `DELETE bi FROM budget_items bi 
+       JOIN project_budgets pb ON bi.budget_id = pb.budget_id 
+       WHERE pb.project_id = ?`, [projectId]
+    );
+    // 7. project_budgets
+    await conn.execute('DELETE FROM project_budgets WHERE project_id = ?', [projectId]);
+    // 8. boq_items
+    await conn.execute('DELETE FROM boq_items WHERE project_id = ?', [projectId]);
+    // 9. project_contracts
+    await conn.execute('DELETE FROM project_contracts WHERE project_id = ?', [projectId]);
+    // 10. project_investors
+    await conn.execute('DELETE FROM project_investors WHERE project_id = ?', [projectId]);
+    // 11. finally, projects
+    await conn.execute('DELETE FROM projects WHERE project_id = ?', [projectId]);
+
+    await conn.commit();
+    conn.release();
+    res.json({ success: true, message: 'Project deleted successfully' });
+  } catch (err) {
+    await conn.rollback();
+    conn.release();
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 module.exports = router;
