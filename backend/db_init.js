@@ -7,9 +7,13 @@
  */
 
 const db = require('./db');
+const runMigrations = require('./db_migrate_v2');
 
 async function initDatabase() {
   console.log('🔧 Running DB init checks...');
+
+  // Run V2 schema migrations first (idempotent)
+  await runMigrations();
 
   try {
     // ─────────────────────────────────────────
@@ -103,11 +107,16 @@ async function initDatabase() {
       SELECT
         pb.project_id,
         pb.budget_id,
+        pb.status AS budget_status,
+        bi.budget_item_id,
         bi.category,
-        SUM(bi.budgeted_amount)   AS total_budgeted,
-        SUM(bi.actual_amount)     AS total_actual,
-        SUM(bi.variance_amount)   AS total_variance,
-        COALESCE(pe.spent, 0)     AS total_expenses_recorded
+        bi.task_name,
+        bi.budgeted_amount,
+        bi.actual_amount,
+        bi.variance_amount,
+        COALESCE(pe.spent, 0)     AS total_expenses_recorded,
+        pe2.expense_type,
+        COALESCE(pe2.type_total, 0) AS expense_by_type
       FROM project_budgets pb
       JOIN budget_items bi ON bi.budget_id = pb.budget_id
       LEFT JOIN (
@@ -115,7 +124,14 @@ async function initDatabase() {
         FROM project_expenses
         GROUP BY project_id, category
       ) pe ON pe.project_id = pb.project_id AND pe.category = bi.category
-      GROUP BY pb.project_id, pb.budget_id, bi.category, pe.spent
+      LEFT JOIN (
+        SELECT project_id, expense_type, SUM(amount) AS type_total
+        FROM project_expenses
+        GROUP BY project_id, expense_type
+      ) pe2 ON pe2.project_id = pb.project_id
+      GROUP BY pb.project_id, pb.budget_id, pb.status, bi.budget_item_id,
+               bi.category, bi.task_name, bi.budgeted_amount, bi.actual_amount,
+               bi.variance_amount, pe.spent, pe2.expense_type, pe2.type_total
     `);
     console.log('  ✅ v_budget_vs_actual OK');
 

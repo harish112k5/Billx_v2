@@ -114,6 +114,60 @@ async function getProjectDashboard(project_id) {
   else if (mainContracts.length > 0) sandwichMode = 'main_only';
   else if (subContracts.length > 0) sandwichMode = 'sub_only';
 
+  // ── Query 9: Expense Type Breakdown ────────────────────────────
+  const [expenseTypeRows] = await db.execute(
+    `SELECT 
+      expense_type,
+      COALESCE(SUM(amount), 0) AS total_amount,
+      COUNT(*) AS transaction_count
+    FROM project_expenses
+    WHERE project_id = ?
+    GROUP BY expense_type`,
+    [project_id]
+  );
+
+  // ── Query 10: Budget Health Summary ───────────────────────────
+  const [budgetHealthRows] = await db.execute(
+    `SELECT 
+      p.contract_value,
+      p.planned_budget,
+      p.planned_profit,
+      COALESCE(pe_sum.total_exp, 0) AS total_expenses,
+      COALESCE(ra_sum.total_recv, 0) AS total_received
+    FROM projects p
+    LEFT JOIN (
+      SELECT project_id, SUM(amount) AS total_exp FROM project_expenses GROUP BY project_id
+    ) pe_sum ON pe_sum.project_id = p.project_id
+    LEFT JOIN (
+      SELECT project_id, SUM(payment_received) AS total_recv FROM ra_bills GROUP BY project_id
+    ) ra_sum ON ra_sum.project_id = p.project_id
+    WHERE p.project_id = ?`,
+    [project_id]
+  );
+
+  // Build budget_health
+  const bh = budgetHealthRows[0] || {};
+  const bhContractValue = parseFloat(bh.contract_value) || 0;
+  const bhPlannedBudget = parseFloat(bh.planned_budget) || 0;
+  const bhPlannedProfit = parseFloat(bh.planned_profit) || 0;
+  const bhTotalExpenses = parseFloat(bh.total_expenses) || 0;
+  const bhTotalReceived = parseFloat(bh.total_received) || 0;
+  const bhBudgetUsedPercent = bhPlannedBudget > 0
+    ? Math.round((bhTotalExpenses / bhPlannedBudget) * 10000) / 100
+    : 0;
+  const bhBudgetStatus = bhBudgetUsedPercent < 70 ? 'green' : bhBudgetUsedPercent <= 90 ? 'orange' : 'red';
+  const bhCurrentProfit = bhTotalReceived - bhTotalExpenses;
+  const bhProfitVariance = bhCurrentProfit - bhPlannedProfit;
+
+  // Build expense_breakdown object
+  const expenseBreakdown = {};
+  for (const row of expenseTypeRows) {
+    expenseBreakdown[row.expense_type || 'material'] = {
+      amount: parseFloat(row.total_amount) || 0,
+      count: parseInt(row.transaction_count) || 0,
+    };
+  }
+
   // ── Variance ──────────────────────────────────────────────────
   const execAmt   = parseFloat(boq.total_executed_amount) || 0;
   const planAmt   = parseFloat(boq.total_planned_amount)  || 0;
@@ -163,6 +217,18 @@ async function getProjectDashboard(project_id) {
       tds_deducted:             parseFloat(billing.total_tds) || 0,
       labour_cess:              parseFloat(billing.total_labour_cess) || 0,
     },
+    budget_health: {
+      contract_value:    bhContractValue,
+      planned_budget:    bhPlannedBudget,
+      planned_profit:    bhPlannedProfit,
+      total_expenses:    bhTotalExpenses,
+      total_received:    bhTotalReceived,
+      budget_used_percent: bhBudgetUsedPercent,
+      budget_status:     bhBudgetStatus,
+      current_profit:    bhCurrentProfit,
+      profit_variance:   bhProfitVariance,
+    },
+    expense_breakdown: expenseBreakdown,
     variance: {
       planned_vs_executed_amount:  varAmt,
       planned_vs_executed_percent: parseFloat(varPct),

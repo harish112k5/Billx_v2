@@ -174,7 +174,71 @@ export default function ProjectDashboard() {
         </div>
       </div>
 
-      {/* ── Section A.5: Budget Overview ─────────────────────────── */}
+      {/* ── Budget Health Section ─────────────────────────────── */}
+      {data.budget_health && data.budget_health.planned_budget > 0 && (
+        <div className="section-card" style={{ marginBottom: 16 }}>
+          <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+            <Wallet size={16} color="var(--green)" /> Budget Health
+            <span className={`status-badge ${data.budget_health.budget_status}`} style={{ marginLeft: 8 }}>
+              {data.budget_health.budget_status === 'green' ? 'Healthy' :
+               data.budget_health.budget_status === 'orange' ? 'Caution' : 'Critical'}
+            </span>
+          </div>
+
+          <div className="kpi-grid kpi-grid-4" style={{ marginBottom: 16 }}>
+            <div className="kpi-card blue">
+              <div className="kpi-icon blue"><Wallet /></div>
+              <div className="kpi-label">Planned Budget</div>
+              <div className="kpi-value blue">{fmt(data.budget_health.planned_budget)}</div>
+              <div className="kpi-sub">{fmtFull(data.budget_health.planned_budget)}</div>
+            </div>
+            <div className="kpi-card red">
+              <div className="kpi-icon red"><TrendingDown /></div>
+              <div className="kpi-label">Total Expenses</div>
+              <div className="kpi-value red">{fmt(data.budget_health.total_expenses)}</div>
+              <div className="kpi-sub">{data.budget_health.budget_used_percent}% of budget</div>
+            </div>
+            <div className={`kpi-card ${data.budget_health.budget_status === 'red' ? 'red' : 'green'}`}>
+              <div className={`kpi-icon ${data.budget_health.budget_status === 'red' ? 'red' : 'green'}`}><DollarSign /></div>
+              <div className="kpi-label">Budget Remaining</div>
+              <div className={`kpi-value ${data.budget_health.budget_status === 'red' ? 'red' : 'green'}`}>
+                {fmt(data.budget_health.planned_budget - data.budget_health.total_expenses)}
+              </div>
+              <div className="kpi-sub">{(100 - data.budget_health.budget_used_percent).toFixed(1)}% left</div>
+            </div>
+            <div className={`kpi-card ${data.budget_health.current_profit >= data.budget_health.planned_profit ? 'green' : 'red'}`}>
+              <div className={`kpi-icon ${data.budget_health.current_profit >= data.budget_health.planned_profit ? 'green' : 'red'}`}><TrendingUp /></div>
+              <div className="kpi-label">Current Profit</div>
+              <div className={`kpi-value ${data.budget_health.current_profit >= data.budget_health.planned_profit ? 'green' : 'red'}`}>
+                {fmt(data.budget_health.current_profit)}
+              </div>
+              <div className="kpi-sub">
+                {data.budget_health.current_profit >= data.budget_health.planned_profit ? 'On Track' : 'Below Target'}
+              </div>
+            </div>
+          </div>
+
+          {/* Budget Progress Bar */}
+          <div className="budget-progress-bar">
+            <div className="progress-labels">
+              <span>0%</span>
+              <span>Budget Consumed: {data.budget_health.budget_used_percent}%</span>
+              <span>100%</span>
+            </div>
+            <div className="progress-track">
+              <div
+                className={`progress-fill ${data.budget_health.budget_status}`}
+                style={{ width: `${Math.min(data.budget_health.budget_used_percent, 100)}%` }}
+              />
+            </div>
+            <div className="progress-markers">
+              <span className="marker green">Safe (&lt;70%)</span>
+              <span className="marker orange">Caution (70-90%)</span>
+              <span className="marker red">Danger (&gt;90%)</span>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="section-card" style={{ marginBottom: 16, padding: '16px 20px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>

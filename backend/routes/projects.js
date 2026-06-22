@@ -6,6 +6,13 @@ const analyticsEngine = require('../services/analyticsEngine');
 
 const router = express.Router();
 
+// ── Helper: compute budget status from percent ────────────────
+function getBudgetStatus(percent) {
+  if (percent < 70) return 'green';
+  if (percent <= 90) return 'orange';
+  return 'red';
+}
+
 // GET /api/projects
 router.get('/', verifyToken, async (req, res) => {
   try {
@@ -13,19 +20,41 @@ router.get('/', verifyToken, async (req, res) => {
       `SELECT p.*, u.name AS created_by_name,
               COUNT(DISTINCT r.ra_bill_id) AS total_ra_bills,
               COALESCE(SUM(DISTINCT r.payment_received), 0) AS total_received,
-              COUNT(DISTINCT b.boq_id) AS total_boq_items
+              COUNT(DISTINCT b.boq_id) AS total_boq_items,
+              COALESCE(SUM(pe.amount), 0) AS total_expenses,
+              CASE 
+                WHEN p.planned_budget > 0 
+                THEN ROUND(COALESCE(SUM(pe.amount), 0) / p.planned_budget * 100, 2)
+                ELSE 0 
+              END AS budget_used_percent
        FROM projects p
        LEFT JOIN users u          ON p.created_by = u.user_id
        LEFT JOIN ra_bills r       ON r.project_id  = p.project_id
        LEFT JOIN boq_items b      ON b.project_id  = p.project_id
+       LEFT JOIN project_expenses pe ON pe.project_id = p.project_id
         GROUP BY 
           p.project_id, p.project_code, p.project_name, p.project_location, 
           p.client_name, p.work_order_number, p.work_order_date, 
-          p.contract_value, p.start_date, p.end_date, p.status, p.description, 
+          p.contract_value, p.planned_budget, p.planned_profit, p.project_manager,
+          p.start_date, p.end_date, p.status, p.description, 
           p.created_by, p.created_at, p.updated_at, u.name
         ORDER BY p.created_at DESC`
     );
-    res.json({ success: true, data: rows });
+
+    // Add computed budget_status and current_profit
+    const enriched = rows.map(p => {
+      const budgetUsed = parseFloat(p.budget_used_percent) || 0;
+      const totalReceived = parseFloat(p.total_received) || 0;
+      const totalExpenses = parseFloat(p.total_expenses) || 0;
+      const currentProfit = totalReceived - totalExpenses;
+      return {
+        ...p,
+        budget_status: getBudgetStatus(budgetUsed),
+        current_profit: currentProfit,
+      };
+    });
+
+    res.json({ success: true, data: enriched });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -50,7 +79,53 @@ router.get('/:id', verifyToken, async (req, res) => {
        WHERE pc.project_id = ?`,
       [req.params.id]
     );
-    res.json({ success: true, data: { ...rows[0], contracts } });
+
+    // Get financial summary
+    const [expenseTotals] = await db.execute(
+      `SELECT COALESCE(SUM(amount), 0) AS total_expenses FROM project_expenses WHERE project_id = ?`,
+      [req.params.id]
+    );
+    const [revenueTotals] = await db.execute(
+      `SELECT COALESCE(SUM(payment_received), 0) AS total_received FROM ra_bills WHERE project_id = ?`,
+      [req.params.id]
+    );
+    const [expenseBreakdown] = await db.execute(
+      `SELECT expense_type, COALESCE(SUM(amount), 0) AS total 
+       FROM project_expenses WHERE project_id = ? GROUP BY expense_type`,
+      [req.params.id]
+    );
+
+    const project = rows[0];
+    const totalExpenses = parseFloat(expenseTotals[0].total_expenses) || 0;
+    const totalReceived = parseFloat(revenueTotals[0].total_received) || 0;
+    const plannedBudget = parseFloat(project.planned_budget) || 0;
+    const plannedProfit = parseFloat(project.planned_profit) || 0;
+    const budgetUsedPercent = plannedBudget > 0 ? Math.round((totalExpenses / plannedBudget) * 10000) / 100 : 0;
+    const currentProfit = totalReceived - totalExpenses;
+    const profitVariance = currentProfit - plannedProfit;
+
+    // Build expense_breakdown object
+    const breakdown = { material: 0, manpower: 0, machinery: 0, movement: 0, misc: 0 };
+    expenseBreakdown.forEach(row => {
+      if (breakdown.hasOwnProperty(row.expense_type)) {
+        breakdown[row.expense_type] = parseFloat(row.total) || 0;
+      }
+    });
+
+    res.json({
+      success: true,
+      data: {
+        ...project,
+        contracts,
+        total_expenses: totalExpenses,
+        total_received: totalReceived,
+        budget_used_percent: budgetUsedPercent,
+        budget_status: getBudgetStatus(budgetUsedPercent),
+        current_profit: currentProfit,
+        profit_variance: profitVariance,
+        expense_breakdown: breakdown,
+      }
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -66,24 +141,155 @@ router.get('/:id/dashboard', verifyToken, async (req, res) => {
   }
 });
 
+// GET /api/projects/:id/budget-overrun
+router.get('/:id/budget-overrun', verifyToken, async (req, res) => {
+  try {
+    const [overrunItems] = await db.execute(
+      `SELECT 
+        b.boq_id,
+        b.item_code,
+        b.description,
+        b.planned_amount,
+        COALESCE(SUM(pe.amount), 0) AS actual_cost,
+        b.planned_amount - COALESCE(SUM(pe.amount), 0) AS variance,
+        CASE 
+          WHEN b.planned_amount > 0 
+          THEN ROUND((COALESCE(SUM(pe.amount), 0) - b.planned_amount) / b.planned_amount * 100, 2)
+          ELSE 0 
+        END AS overrun_percent
+      FROM boq_items b
+      LEFT JOIN project_expenses pe ON pe.boq_id = b.boq_id
+      WHERE b.project_id = ?
+      GROUP BY b.boq_id, b.item_code, b.description, b.planned_amount
+      HAVING actual_cost > b.planned_amount
+      ORDER BY overrun_percent DESC`,
+      [req.params.id]
+    );
+
+    // Assign alert levels
+    const items = overrunItems.map(item => ({
+      ...item,
+      actual_cost: parseFloat(item.actual_cost) || 0,
+      variance: parseFloat(item.variance) || 0,
+      overrun_percent: parseFloat(item.overrun_percent) || 0,
+      alert_level: parseFloat(item.overrun_percent) > 50 ? 'severe' :
+                   parseFloat(item.overrun_percent) > 20 ? 'critical' : 'warning',
+    }));
+
+    const totalOverrun = items.reduce((s, i) => s + Math.abs(i.variance), 0);
+
+    // Get total BOQ count
+    const [boqCount] = await db.execute(
+      'SELECT COUNT(*) AS total FROM boq_items WHERE project_id = ?',
+      [req.params.id]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        overrun_items: items,
+        total_overrun_amount: totalOverrun,
+        overrun_boq_count: items.length,
+        total_boq_count: parseInt(boqCount[0].total) || 0,
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/projects/:id/profit-analysis
+router.get('/:id/profit-analysis', verifyToken, async (req, res) => {
+  try {
+    const [projectRows] = await db.execute(
+      'SELECT planned_profit, planned_budget, contract_value FROM projects WHERE project_id = ?',
+      [req.params.id]
+    );
+    if (!projectRows.length) return res.status(404).json({ success: false, error: 'Project not found' });
+
+    const project = projectRows[0];
+    const contractValue = parseFloat(project.contract_value) || 0;
+    const plannedBudget = parseFloat(project.planned_budget) || 0;
+    const plannedProfit = parseFloat(project.planned_profit) || 0;
+
+    const [revRows] = await db.execute(
+      'SELECT COALESCE(SUM(payment_received), 0) AS total_revenue FROM ra_bills WHERE project_id = ?',
+      [req.params.id]
+    );
+    const [expRows] = await db.execute(
+      'SELECT COALESCE(SUM(amount), 0) AS total_expenses FROM project_expenses WHERE project_id = ?',
+      [req.params.id]
+    );
+
+    const totalRevenue = parseFloat(revRows[0].total_revenue) || 0;
+    const totalExpenses = parseFloat(expRows[0].total_expenses) || 0;
+    const currentProfit = totalRevenue - totalExpenses;
+    const profitVariance = currentProfit - plannedProfit;
+    const profitVariancePercent = plannedProfit > 0 ? Math.round((profitVariance / plannedProfit) * 10000) / 100 : 0;
+    const remainingBudget = Math.max(0, plannedBudget - totalExpenses);
+    const projectedFinalCost = totalExpenses + remainingBudget;
+    const projectedFinalProfit = contractValue - projectedFinalCost;
+
+    let profitHealth = 'healthy';
+    if (currentProfit < plannedProfit) {
+      profitHealth = profitVariancePercent >= -25 ? 'at_risk' : 'critical';
+    }
+
+    res.json({
+      success: true,
+      data: {
+        contract_value: contractValue,
+        planned_budget: plannedBudget,
+        planned_profit: plannedProfit,
+        total_revenue: totalRevenue,
+        total_expenses: totalExpenses,
+        current_profit: currentProfit,
+        profit_variance: profitVariance,
+        profit_variance_percent: profitVariancePercent,
+        projected_final_cost: projectedFinalCost,
+        projected_final_profit: projectedFinalProfit,
+        profit_health: profitHealth,
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // POST /api/projects
 router.post('/', verifyToken, async (req, res) => {
   try {
     const {
       project_code, project_name, project_location, client_name,
-      work_order_number, work_order_date, contract_value, start_date, end_date,
+      work_order_number, work_order_date, contract_value, planned_profit,
+      project_manager, start_date, end_date,
       status, description, contractor_id, subcontractor_id, subcontractor_ids
     } = req.body;
+
+    // Budget formula validation
+    const contractValue = parseFloat(contract_value) || 0;
+    const plannedProfit = parseFloat(planned_profit) || 0;
+
+    if (plannedProfit < 0) {
+      return res.status(400).json({ success: false, error: 'Planned profit cannot be negative' });
+    }
+    if (plannedProfit > contractValue) {
+      return res.status(400).json({ success: false, error: 'Planned profit cannot exceed contract value' });
+    }
+
+    const plannedBudget = contractValue - plannedProfit;
 
     const project_id = uuidv4();
     await db.execute(
       `INSERT INTO projects
        (project_id, project_code, project_name, project_location, client_name,
-        work_order_number, work_order_date, contract_value, start_date, end_date,
+        work_order_number, work_order_date, contract_value, planned_budget, planned_profit,
+        project_manager, start_date, end_date,
         status, description, created_by)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [project_id, project_code, project_name, project_location||null, client_name||null,
-       work_order_number||null, work_order_date||null, contract_value||0,
+       work_order_number||null, work_order_date||null, contractValue,
+       plannedBudget, plannedProfit, project_manager||null,
        start_date||null, end_date||null, status||'planned', description||null, req.user.user_id]
     );
 
@@ -93,7 +299,7 @@ router.post('/', verifyToken, async (req, res) => {
         `INSERT INTO project_contracts
          (contract_id, project_id, organization_id, contract_type, contract_value)
          VALUES (?, ?, ?, 'main', ?)`,
-        [contract_id, project_id, contractor_id, contract_value||0]
+        [contract_id, project_id, contractor_id, contractValue]
       );
     }
 
@@ -110,7 +316,12 @@ router.post('/', verifyToken, async (req, res) => {
       );
     }
 
-    res.status(201).json({ success: true, project_id });
+    res.status(201).json({
+      success: true,
+      project_id,
+      planned_budget: plannedBudget,
+      planned_profit: plannedProfit,
+    });
   } catch (err) {
     if (err.code === 'ER_DUP_ENTRY') {
       return res.status(409).json({ success: false, error: 'Project code already exists' });
@@ -124,15 +335,46 @@ router.put('/:id', verifyToken, async (req, res) => {
   try {
     const {
       project_name, project_location, client_name, work_order_number,
-      work_order_date, contract_value, start_date, end_date, status, description,
+      work_order_date, contract_value, planned_profit, project_manager,
+      start_date, end_date, status, description,
       contractor_id, subcontractor_id, subcontractor_ids
     } = req.body;
+
+    // Budget recalculation
+    let plannedBudget = null;
+    let finalPlannedProfit = null;
+    if (contract_value !== undefined || planned_profit !== undefined) {
+      const [currentRows] = await db.execute(
+        'SELECT contract_value, planned_profit FROM projects WHERE project_id = ?',
+        [req.params.id]
+      );
+      if (currentRows.length) {
+        const current = currentRows[0];
+        const newContractValue = contract_value !== undefined ? parseFloat(contract_value) : parseFloat(current.contract_value) || 0;
+        finalPlannedProfit = planned_profit !== undefined ? parseFloat(planned_profit) : parseFloat(current.planned_profit) || 0;
+
+        if (finalPlannedProfit < 0) {
+          return res.status(400).json({ success: false, error: 'Planned profit cannot be negative' });
+        }
+        if (finalPlannedProfit > newContractValue) {
+          return res.status(400).json({ success: false, error: 'Planned profit cannot exceed contract value' });
+        }
+
+        plannedBudget = newContractValue - finalPlannedProfit;
+      }
+    }
+
     await db.execute(
       `UPDATE projects SET project_name=?, project_location=?, client_name=?,
-       work_order_number=?, work_order_date=?, contract_value=?, start_date=?,
-       end_date=?, status=?, description=? WHERE project_id=?`,
+       work_order_number=?, work_order_date=?, contract_value=?,
+       planned_budget=COALESCE(?, planned_budget),
+       planned_profit=COALESCE(?, planned_profit),
+       project_manager=COALESCE(?, project_manager),
+       start_date=?, end_date=?, status=?, description=? WHERE project_id=?`,
       [project_name, project_location||null, client_name||null, work_order_number||null,
-       work_order_date||null, contract_value||0, start_date||null, end_date||null,
+       work_order_date||null, contract_value||0,
+       plannedBudget, finalPlannedProfit, project_manager !== undefined ? (project_manager||null) : null,
+       start_date||null, end_date||null,
        status||'ongoing', description||null, req.params.id]
     );
 
@@ -147,12 +389,12 @@ router.put('/:id', verifyToken, async (req, res) => {
           [contractor_id, contract_value||0, existingContracts[0].contract_id]
         );
       } else {
-        const contract_id = uuidv4();
+        const contract_id_new = uuidv4();
         await db.execute(
           `INSERT INTO project_contracts
            (contract_id, project_id, organization_id, contract_type, contract_value)
            VALUES (?, ?, ?, 'main', ?)`,
-          [contract_id, req.params.id, contractor_id, contract_value||0]
+          [contract_id_new, req.params.id, contractor_id, contract_value||0]
         );
       }
     }

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '../api/axios';
+import { fmtFull } from '../components/KPICard';
 import { ArrowLeft, Plus, Pencil, Trash2, Users } from 'lucide-react';
 import OrganizationModal from '../components/OrganizationModal';
 
@@ -10,6 +11,7 @@ export default function EditProject() {
   const [form, setForm] = useState({
     project_code: '', project_name: '', project_location: '', client_name: '',
     work_order_number: '', work_order_date: '', contract_value: '',
+    planned_profit: '', project_manager: '',
     start_date: '', end_date: '', status: 'ongoing', description: '', 
     contractor_id: ''
   });
@@ -49,6 +51,8 @@ export default function EditProject() {
         work_order_number: p.work_order_number || '',
         work_order_date: p.work_order_date ? p.work_order_date.split('T')[0] : '',
         contract_value: p.contract_value || '',
+        planned_profit: p.planned_profit || '',
+        project_manager: p.project_manager || '',
         start_date: p.start_date ? p.start_date.split('T')[0] : '',
         end_date: p.end_date ? p.end_date.split('T')[0] : '',
         status: p.status || 'ongoing',
@@ -152,7 +156,43 @@ export default function EditProject() {
             </div>
           </div>
 
-          {/* ── Main Contractor ── */}
+          {/* ── Financial Section ── */}
+          <div style={{ border: '1px solid var(--border-dark)', borderRadius: 'var(--radius)', padding: 16, marginBottom: 16, background: 'var(--surface-dark)' }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--green)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--green)' }} />
+              Financial Planning
+            </div>
+
+            <div className="grid-2">
+              <div className="form-group">
+                <label className="form-label">Contract Value (₹)</label>
+                <input type="number" className="form-input" value={form.contract_value} onChange={set('contract_value')} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Expected Profit (₹)</label>
+                <input type="number" className="form-input" value={form.planned_profit} onChange={set('planned_profit')} min="0" />
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>Profit margin expected from this project</div>
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Planned Budget (₹) — Auto Calculated</label>
+              <input
+                type="text"
+                className="form-input"
+                value={(parseFloat(form.contract_value) || 0) > 0 ? fmtFull((parseFloat(form.contract_value) || 0) - (parseFloat(form.planned_profit) || 0)) : '—'}
+                readOnly
+                style={{ background: 'var(--surface)', color: ((parseFloat(form.contract_value) || 0) - (parseFloat(form.planned_profit) || 0)) < 0 ? 'var(--red)' : 'var(--green)', fontWeight: 600, cursor: 'not-allowed' }}
+              />
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>Budget = Contract Value − Expected Profit</div>
+            </div>
+          </div>
+
+          {/* ── Project Manager ── */}
+          <div className="form-group">
+            <label className="form-label">Project Manager</label>
+            <input className="form-input" value={form.project_manager} onChange={set('project_manager')} placeholder="Name of project manager" />
+          </div>
           <div style={{ border: '1px solid var(--border-dark)', borderRadius: 'var(--radius)', padding: 16, marginBottom: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--amber)', textTransform: 'uppercase', letterSpacing: 1 }}>
@@ -261,21 +301,12 @@ export default function EditProject() {
 
           <div className="grid-2">
             <div className="form-group">
-              <label className="form-label">Contract Value (₹)</label>
-              <input type="number" className="form-input" value={form.contract_value} onChange={set('contract_value')} />
-            </div>
-            <div className="form-group">
               <label className="form-label">Start Date</label>
               <input type="date" className="form-input" value={form.start_date} onChange={set('start_date')} />
             </div>
-          </div>
-
-          <div className="grid-2">
             <div className="form-group">
               <label className="form-label">End Date</label>
               <input type="date" className="form-input" value={form.end_date} onChange={set('end_date')} />
-            </div>
-            <div className="form-group">
             </div>
           </div>
 
