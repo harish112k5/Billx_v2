@@ -71,12 +71,23 @@ export default function CreateRABill() {
     });
   }, [id]);
 
-  // Load BOQ items when contract changes or step 2 opens
+  // Load BOQ items and auto-calculate previous cumulative amount when contract changes
   useEffect(() => {
-    if (step === 1 && info.contract_id) {
+    if (info.contract_id) {
       api.get('/projects/' + id + '/boq').then(res => {
-        const items = (res.data.data || []).filter(b => !b.is_non_boq);
-        setBoqItems(items.map(b => ({
+        const items = (res.data.data || []);
+        
+        // Sum up total executed amount (cumulative up to previous) across all items
+        const prevTotal = items.reduce((sum, b) => sum + parseFloat(b.executed_amount || 0), 0);
+        
+        // Only set it if it's currently empty to avoid overwriting user edits
+        setInfo(f => ({ 
+          ...f, 
+          basic_amount_upto_prev: f.basic_amount_upto_prev === '' ? prevTotal.toFixed(2) : f.basic_amount_upto_prev 
+        }));
+
+        const boqItemsFiltered = items.filter(b => !b.is_non_boq);
+        setBoqItems(boqItemsFiltered.map(b => ({
           boq_id: b.boq_id,
           item_code: b.item_code,
           item_number: b.item_number,
@@ -94,7 +105,7 @@ export default function CreateRABill() {
         })));
       });
     }
-  }, [step, info.contract_id, id]);
+  }, [info.contract_id, id]);
 
   const handleUptoDateChange = (e) => {
     const upto = parseFloat(e.target.value) || 0;
