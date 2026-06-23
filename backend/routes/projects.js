@@ -18,27 +18,33 @@ router.get('/', verifyToken, async (req, res) => {
   try {
     const [rows] = await db.execute(
       `SELECT p.*, u.name AS created_by_name,
-              COUNT(DISTINCT r.ra_bill_id) AS total_ra_bills,
-              COALESCE(SUM(DISTINCT r.payment_received), 0) AS total_received,
-              COUNT(DISTINCT b.boq_id) AS total_boq_items,
-              COALESCE(SUM(pe.amount), 0) AS total_expenses,
+              COALESCE(r.total_ra_bills, 0) AS total_ra_bills,
+              COALESCE(r.total_received, 0) AS total_received,
+              COALESCE(b.total_boq_items, 0) AS total_boq_items,
+              COALESCE(pe.total_expenses, 0) AS total_expenses,
               CASE 
                 WHEN p.planned_budget > 0 
-                THEN ROUND(COALESCE(SUM(pe.amount), 0) / p.planned_budget * 100, 2)
+                THEN ROUND(COALESCE(pe.total_expenses, 0) / p.planned_budget * 100, 2)
                 ELSE 0 
               END AS budget_used_percent
        FROM projects p
-       LEFT JOIN users u          ON p.created_by = u.user_id
-       LEFT JOIN ra_bills r       ON r.project_id  = p.project_id
-       LEFT JOIN boq_items b      ON b.project_id  = p.project_id
-       LEFT JOIN project_expenses pe ON pe.project_id = p.project_id
-        GROUP BY 
-          p.project_id, p.project_code, p.project_name, p.project_location, 
-          p.client_name, p.work_order_number, p.work_order_date, 
-          p.contract_value, p.planned_budget, p.planned_profit, p.project_manager,
-          p.start_date, p.end_date, p.status, p.description, 
-          p.created_by, p.created_at, p.updated_at, u.name
-        ORDER BY p.created_at DESC`
+       LEFT JOIN users u ON p.created_by = u.user_id
+       LEFT JOIN (
+           SELECT project_id, COUNT(ra_bill_id) AS total_ra_bills, SUM(payment_received) AS total_received
+           FROM ra_bills
+           GROUP BY project_id
+       ) r ON r.project_id = p.project_id
+       LEFT JOIN (
+           SELECT project_id, COUNT(boq_id) AS total_boq_items
+           FROM boq_items
+           GROUP BY project_id
+       ) b ON b.project_id = p.project_id
+       LEFT JOIN (
+           SELECT project_id, SUM(amount) AS total_expenses
+           FROM project_expenses
+           GROUP BY project_id
+       ) pe ON pe.project_id = p.project_id
+       ORDER BY p.created_at DESC`
     );
 
     // Add computed budget_status and current_profit

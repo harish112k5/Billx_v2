@@ -4,7 +4,7 @@ import axios from 'axios';
 const _hostname = (typeof window !== 'undefined') ? window.location.hostname : 'localhost';
 const _isLocal = _hostname === 'localhost' || _hostname === '127.0.0.1';
 const _PROD_API = 'https://billx-v2.onrender.com/api';
-const _DEV_API = 'http://localhost:5000/api';
+const _DEV_API = 'http://localhost:5001/api';
 const API_BASE = _isLocal ? _DEV_API : _PROD_API;
 
 const api = axios.create({
