@@ -21,6 +21,7 @@ import CreateProject     from './pages/CreateProject';
 import EditProject       from './pages/EditProject';
 import ExpensesPage      from './pages/ExpensesPage';
 import CreateRABill      from './pages/CreateRABill';
+import ProjectHistoryPage from './pages/ProjectHistoryPage';
 
 // Layout
 import Sidebar from './components/Sidebar';
@@ -88,6 +89,7 @@ export default function App() {
           <Route path="/projects/:id/cashflow" element={<ProtectedRoute><CashFlowPage /></ProtectedRoute>} />
           <Route path="/projects/:id/investors" element={<ProtectedRoute><InvestorPage /></ProtectedRoute>} />
           <Route path="/projects/:id/expenses" element={<ProtectedRoute><ExpensesPage /></ProtectedRoute>} />
+          <Route path="/projects/:id/history" element={<ProtectedRoute><ProjectHistoryPage /></ProtectedRoute>} />
           <Route path="/import" element={<ProtectedRoute><ImportPage /></ProtectedRoute>} />
           <Route path="/organizations" element={<ProtectedRoute><OrganizationsPage /></ProtectedRoute>} />
           <Route path="/admin" element={<ProtectedRoute><AdminPanel /></ProtectedRoute>} />

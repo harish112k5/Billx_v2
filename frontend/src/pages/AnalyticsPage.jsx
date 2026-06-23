@@ -7,6 +7,7 @@ import {
   CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell
 } from 'recharts';
 import { BarChart3, TrendingUp, Activity, AlertTriangle, Wallet } from 'lucide-react';
+import DataFreshnessIndicator from '../components/DataFreshnessIndicator';
 
 const TooltipStyle = {
   contentStyle: { background: '#12121A', border: '1px solid #1E1E2E', borderRadius: 8 },
@@ -26,15 +27,18 @@ export default function AnalyticsPage() {
   const { id } = useParams();
   const [analytics, setAnalytics] = useState(null);
   const [overrunData, setOverrunData] = useState(null);
+  const [freqData, setFreqData] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     Promise.all([
       api.get(`/analytics/project/${id}`),
       api.get(`/projects/${id}/budget-overrun`).catch(() => ({ data: { data: null } })),
-    ]).then(([res, overrunRes]) => {
+      api.get(`/projects/${id}/data-frequency`).catch(() => ({ data: { data: null } })),
+    ]).then(([res, overrunRes, freqRes]) => {
       setAnalytics(res.data.data);
       setOverrunData(overrunRes.data.data);
+      setFreqData(freqRes.data.data);
     }).finally(() => setLoading(false));
   }, [id]);
 
@@ -115,6 +119,16 @@ export default function AnalyticsPage() {
       {budgetActualData.length > 0 && (
         <div className="section-card" style={{ marginBottom: 16 }}>
           <div className="section-title mb-16"><Wallet /> Budget vs Actual Cost vs Revenue</div>
+          <DataFreshnessIndicator
+            lastUpdatedAt={freqData?.module_summary?.ra_bill?.last_updated}
+            lastEventType={freqData?.module_summary?.ra_bill?.last_event}
+            updatedBy={freqData?.last_updated_by}
+            eventCount={(freqData?.module_summary?.ra_bill?.count || 0) + (freqData?.module_summary?.expenses?.count || 0)}
+            module="Budget & Revenue"
+            events={(freqData?.events || []).filter(e => ['ra_bill', 'expenses', 'boq'].includes(e.affected_module))}
+            loaded={freqData !== null}
+          />
+          <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 8 }}>Data combines BOQ entries, expenses, and RA Bills</div>
           <div style={{ height: 300 }}>
             <ResponsiveContainer>
               <BarChart data={budgetActualData} layout="vertical">
@@ -138,6 +152,15 @@ export default function AnalyticsPage() {
         {/* Expense Type Donut */}
         <div className="section-card">
           <div className="section-title mb-16"><Activity /> Expense Breakdown by Type</div>
+          <DataFreshnessIndicator
+            lastUpdatedAt={freqData?.module_summary?.expenses?.last_updated}
+            lastEventType={freqData?.module_summary?.expenses?.last_event}
+            updatedBy={freqData?.last_updated_by}
+            eventCount={freqData?.module_summary?.expenses?.count || 0}
+            module="Expenses"
+            events={(freqData?.events || []).filter(e => e.affected_module === 'expenses')}
+            loaded={freqData !== null}
+          />
           {expenseTypeData.length > 0 ? (
             <div style={{ height: 280, display: 'flex', alignItems: 'center', gap: 24 }}>
               <ResponsiveContainer width={180} height="100%">
@@ -169,6 +192,15 @@ export default function AnalyticsPage() {
         {/* BOQ Status Donut */}
         <div className="section-card">
           <div className="section-title mb-16"><TrendingUp /> BOQ Item Status Distribution</div>
+          <DataFreshnessIndicator
+            lastUpdatedAt={freqData?.module_summary?.boq?.last_updated}
+            lastEventType={freqData?.module_summary?.boq?.last_event}
+            updatedBy={freqData?.last_updated_by}
+            eventCount={freqData?.module_summary?.boq?.count || 0}
+            module="BOQ"
+            events={(freqData?.events || []).filter(e => e.affected_module === 'boq')}
+            loaded={freqData !== null}
+          />
           {boqStatusData.length > 0 ? (
             <div style={{ height: 280, display: 'flex', alignItems: 'center', gap: 24 }}>
               <ResponsiveContainer width={180} height="100%">
@@ -198,6 +230,15 @@ export default function AnalyticsPage() {
       {/* RA Trend Chart */}
       <div className="section-card" style={{ marginBottom: 16 }}>
         <div className="section-title mb-16"><BarChart3 /> RA Bill Trend — Cumulative vs Received</div>
+        <DataFreshnessIndicator
+          lastUpdatedAt={freqData?.module_summary?.ra_bill?.last_updated}
+          lastEventType={freqData?.module_summary?.ra_bill?.last_event}
+          updatedBy={freqData?.last_updated_by}
+          eventCount={freqData?.module_summary?.ra_bill?.count || 0}
+          module="RA Bills"
+          events={(freqData?.events || []).filter(e => e.affected_module === 'ra_bill')}
+          loaded={freqData !== null}
+        />
         {raTrendData.length > 0 ? (
           <div className="chart-container">
             <ResponsiveContainer>

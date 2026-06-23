@@ -7,7 +7,8 @@ import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
   CartesianGrid, Tooltip, Cell
 } from 'recharts';
-import { Search, X, Filter, Activity, Ruler, DollarSign } from 'lucide-react';
+import { Search, X, Filter, Activity, Ruler, DollarSign, Clock } from 'lucide-react';
+import DataFreshnessIndicator from '../components/DataFreshnessIndicator';
 
 const FILTER_TABS = [
   { key: 'all',         label: 'All' },
@@ -34,6 +35,7 @@ export default function BOQPage() {
   const [measurements, setMeasurements] = useState([]);
   const [measLoading, setMeasLoading]   = useState(false);
   const [boqExpenses, setBoqExpenses]   = useState([]);
+  const [freqData, setFreqData]         = useState(null);
 
   const [summary, setSummary] = useState(null);
 
@@ -42,9 +44,11 @@ export default function BOQPage() {
     Promise.all([
       api.get(`/projects/${id}/boq`),
       api.get(`/projects/${id}/boq/summary`),
-    ]).then(([boqRes, sumRes]) => {
+      api.get(`/projects/${id}/data-frequency`).catch(() => ({ data: { data: null } })),
+    ]).then(([boqRes, sumRes, freqRes]) => {
       setItems(boqRes.data.data || []);
       setSummary(sumRes.data.data);
+      setFreqData(freqRes.data.data);
     }).finally(() => setLoading(false));
   }, [id]);
 
@@ -138,6 +142,17 @@ export default function BOQPage() {
       )}
 
       <div className="section-card">
+        {/* Data Freshness */}
+        <DataFreshnessIndicator
+          lastUpdatedAt={freqData?.module_summary?.boq?.last_updated}
+          lastEventType={freqData?.module_summary?.boq?.last_event}
+          updatedBy={freqData?.last_updated_by}
+          eventCount={freqData?.module_summary?.boq?.count || 0}
+          module="BOQ"
+          events={(freqData?.events || []).filter(e => e.affected_module === 'boq')}
+          loaded={freqData !== null}
+        />
+
         {/* Filter Tabs */}
         <div className="tab-list">
           {FILTER_TABS.map(t => (
@@ -334,6 +349,18 @@ export default function BOQPage() {
                 <Ruler />
                 <h3>No measurement records</h3>
                 <p>Import an RA Bill Excel to load measurement data</p>
+                {selected.item_code && (
+                  <div style={{ marginTop: 12, padding: '10px 16px', background: 'var(--surface-dark)', borderRadius: 'var(--radius)', textAlign: 'left' }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--amber)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <Clock size={12} /> Data History
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                      ⚠ No data history recorded for this item.
+                      This item was created via BOQ import but no measurement data has been entered yet.
+                      Import an RA Bill Excel file containing sheet "{selected.item_code}" to add measurements.
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

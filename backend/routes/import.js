@@ -6,6 +6,7 @@ const db       = require('../db');
 const { verifyToken } = require('../middleware/auth');
 const importPipeline  = require('../services/importPipeline');
 const excelParser     = require('../services/excelParser');
+const { logDataEvent } = require('../services/eventLogger');
 
 const router = express.Router();
 
@@ -81,6 +82,15 @@ router.post('/ra-bill', verifyToken, async (req, res) => {
       ]
     );
 
+    // Log data event for frequency tracking
+    await logDataEvent(db, project_id, 'excel_import', 'ra_bill', {
+      description: `Imported RA Bill ${result.ra_number} — ${result.boq_items_processed} BOQ items, ${result.measurements_processed} measurements`,
+      file_name: file_name || 'uploaded.xlsx',
+      ra_bill_number: result.ra_number,
+      amount_after: result.net_payable || 0,
+      performed_by: req.user.user_id,
+    });
+
     res.json({
       success: true,
       import_id,
@@ -128,6 +138,13 @@ router.post('/budget', verifyToken, upload.single('file'), async (req, res) => {
       `UPDATE excel_imports SET status='completed', completed_at=NOW() WHERE import_id=?`,
       [import_id]
     );
+
+    // Log data event for budget import
+    await logDataEvent(db, project_id, 'excel_import', 'boq', {
+      description: `Imported budget from Excel — ${summary?.items_created || 0} budget items`,
+      file_name: req.file.originalname,
+      performed_by: req.user.user_id,
+    });
 
     res.json({ success: true, import_id, summary });
 

@@ -2,6 +2,7 @@ const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 const { verifyToken } = require('../middleware/auth');
+const { logDataEvent } = require('../services/eventLogger');
 
 const router = express.Router();
 
@@ -126,6 +127,15 @@ router.post('/:id/ra-bills', verifyToken, async (req, res) => {
        ret_p, ret_amt, tds_p, tds_amt, lc_p, lc_amt, gross, total_ded, net_pay,
        ipc_number||null, prepared_by||null, submitted_to||null]
     );
+
+    // Log data event
+    await logDataEvent(db, req.params.id, 'manual_ra_bill', 'ra_bill', {
+      description: `Created RA Bill RA-${ra_number} — Basic ₹${basic}, Net ₹${net_pay.toFixed(2)}`,
+      ra_bill_number: ra_number,
+      amount_after: net_pay,
+      performed_by: req.user.user_id,
+    });
+
     res.status(201).json({ success: true, ra_bill_id });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -288,6 +298,15 @@ router.post('/:id/ra-bills/full', verifyToken, async (req, res) => {
     }
 
     await conn.commit();
+
+    // Log data event (use main db pool since conn is about to be released)
+    await logDataEvent(db, projectId, 'manual_ra_bill', 'ra_bill', {
+      description: `Created RA Bill RA-${ra_number} (full) — ${boq_items.length} BOQ items, ${non_boq_items.length} Non-BOQ items, Net ₹${net_pay.toFixed(2)}`,
+      ra_bill_number: ra_number,
+      amount_after: net_pay,
+      performed_by: req.user.user_id,
+    });
+
     conn.release();
     res.status(201).json({ success: true, ra_bill_id });
   } catch (err) {
@@ -301,11 +320,25 @@ router.post('/:id/ra-bills/full', verifyToken, async (req, res) => {
 router.put('/:id', verifyToken, async (req, res) => {
   try {
     const { stage, submitted_date, rejection_amount, rejection_reason } = req.body;
+
+    // Get current bill info for logging
+    const [oldBill] = await db.execute('SELECT project_id, ra_number, stage AS old_stage FROM ra_bills WHERE ra_bill_id=?', [req.params.id]);
+
     await db.execute(
       `UPDATE ra_bills SET stage=?, submitted_date=?, rejection_amount=?, rejection_reason=?
        WHERE ra_bill_id=?`,
       [stage, submitted_date||null, rejection_amount||0, rejection_reason||null, req.params.id]
     );
+
+    // Log data event
+    if (oldBill.length > 0) {
+      await logDataEvent(db, oldBill[0].project_id, 'stage_changed', 'ra_bill', {
+        description: `RA Bill RA-${oldBill[0].ra_number} stage: ${oldBill[0].old_stage} → ${stage}`,
+        ra_bill_number: oldBill[0].ra_number,
+        performed_by: req.user.user_id,
+      });
+    }
+
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -316,10 +349,25 @@ router.put('/:id', verifyToken, async (req, res) => {
 router.put('/:id/certify', verifyToken, async (req, res) => {
   try {
     const { certified_amount, certified_date } = req.body;
+
+    // Get bill info for logging
+    const [bill] = await db.execute('SELECT project_id, ra_number FROM ra_bills WHERE ra_bill_id=?', [req.params.id]);
+
     await db.execute(
       `UPDATE ra_bills SET stage='certified', certified_amount=?, certified_date=? WHERE ra_bill_id=?`,
       [certified_amount, certified_date, req.params.id]
     );
+
+    // Log data event
+    if (bill.length > 0) {
+      await logDataEvent(db, bill[0].project_id, 'stage_changed', 'ra_bill', {
+        description: `RA Bill RA-${bill[0].ra_number} certified — ₹${certified_amount}`,
+        ra_bill_number: bill[0].ra_number,
+        amount_after: parseFloat(certified_amount) || 0,
+        performed_by: req.user.user_id,
+      });
+    }
+
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -330,12 +378,28 @@ router.put('/:id/certify', verifyToken, async (req, res) => {
 router.put('/:id/payment', verifyToken, async (req, res) => {
   try {
     const { payment_received, payment_date } = req.body;
+
+    // Get bill info for logging
+    const [bill] = await db.execute('SELECT project_id, ra_number, payment_received AS old_payment FROM ra_bills WHERE ra_bill_id=?', [req.params.id]);
+
     await db.execute(
       `UPDATE ra_bills SET payment_received=?, payment_date=?,
        stage = CASE WHEN ? >= certified_amount THEN 'paid' ELSE 'partially_paid' END
        WHERE ra_bill_id=?`,
       [payment_received, payment_date, payment_received, req.params.id]
     );
+
+    // Log data event
+    if (bill.length > 0) {
+      await logDataEvent(db, bill[0].project_id, 'payment_recorded', 'payments', {
+        description: `RA Bill RA-${bill[0].ra_number} payment: ₹${payment_received}`,
+        ra_bill_number: bill[0].ra_number,
+        amount_before: parseFloat(bill[0].old_payment) || 0,
+        amount_after: parseFloat(payment_received) || 0,
+        performed_by: req.user.user_id,
+      });
+    }
+
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

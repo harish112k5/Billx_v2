@@ -2,6 +2,7 @@ const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 const { verifyToken } = require('../middleware/auth');
+const { logDataEvent } = require('../services/eventLogger');
 
 const router = express.Router();
 
@@ -69,6 +70,15 @@ router.post('/:id/boq', verifyToken, async (req, res) => {
       [boq_id, req.params.id, contract_id, item_code, item_number||null, description, unit,
        planned_quantity, unit_rate, category||null, phase||null, is_non_boq||0]
     );
+
+    // Log data event
+    await logDataEvent(db, req.params.id, 'manual_boq_entry', 'boq', {
+      description: `Added BOQ item ${item_code}: ${description} — ${planned_quantity} ${unit} @ ₹${unit_rate}`,
+      boq_item_code: item_code,
+      amount_after: (parseFloat(planned_quantity) || 0) * (parseFloat(unit_rate) || 0),
+      performed_by: req.user.user_id,
+    });
+
     res.status(201).json({ success: true, boq_id });
   } catch (err) {
     if (err.code === 'ER_DUP_ENTRY') {

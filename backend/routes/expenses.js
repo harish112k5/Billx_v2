@@ -2,6 +2,7 @@ const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 const { verifyToken } = require('../middleware/auth');
+const { logDataEvent } = require('../services/eventLogger');
 
 const router = express.Router();
 
@@ -135,6 +136,13 @@ router.post('/:id/expenses', verifyToken, async (req, res) => {
     if (budgetWarning) {
       Object.assign(response, budgetWarning);
     }
+
+    // Log data event
+    await logDataEvent(db, req.params.id, 'manual_expense', 'expenses', {
+      description: `Added ${category || expense_type || 'misc'} expense: ₹${newExpenseAmount} — ${description || 'No description'}`,
+      amount_after: newExpenseAmount,
+      performed_by: req.user.user_id,
+    });
 
     res.status(201).json(response);
   } catch (err) {

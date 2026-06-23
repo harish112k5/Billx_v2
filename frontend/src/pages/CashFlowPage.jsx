@@ -7,14 +7,22 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend
 } from 'recharts';
 import { TrendingUp, TrendingDown, DollarSign, Activity } from 'lucide-react';
+import DataFreshnessIndicator from '../components/DataFreshnessIndicator';
 
 export default function CashFlowPage() {
   const { id } = useParams();
   const [data, setData] = useState(null);
+  const [freqData, setFreqData] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get(`/analytics/project/${id}/cashflow`).then(r => setData(r.data.data)).finally(() => setLoading(false));
+    Promise.all([
+      api.get(`/analytics/project/${id}/cashflow`),
+      api.get(`/projects/${id}/data-frequency`).catch(() => ({ data: { data: null } })),
+    ]).then(([r, freqRes]) => {
+      setData(r.data.data);
+      setFreqData(freqRes.data.data);
+    }).finally(() => setLoading(false));
   }, [id]);
 
   if (loading) return <div style={{ padding: 32, textAlign: 'center' }}><div className="loader" /></div>;
@@ -73,6 +81,15 @@ export default function CashFlowPage() {
         <>
           <div className="section-card mb-16">
             <div className="section-title mb-16"><Activity /> Cash Inflow vs Outflow</div>
+            <DataFreshnessIndicator
+              lastUpdatedAt={freqData?.module_summary?.payments?.last_updated}
+              lastEventType={freqData?.module_summary?.payments?.last_event}
+              updatedBy={freqData?.last_updated_by}
+              eventCount={freqData?.module_summary?.payments?.count || 0}
+              module="Payments"
+              events={(freqData?.events || []).filter(e => e.affected_module === 'payments')}
+              loaded={freqData !== null}
+            />
             <div className="chart-container">
               <ResponsiveContainer>
                 <BarChart data={timelineData}>
@@ -90,6 +107,15 @@ export default function CashFlowPage() {
 
           <div className="section-card">
             <div className="section-title mb-16"><TrendingUp /> Net Position Over Time</div>
+            <DataFreshnessIndicator
+              lastUpdatedAt={freqData?.module_summary?.payments?.last_updated || freqData?.module_summary?.expenses?.last_updated}
+              lastEventType={freqData?.module_summary?.payments?.last_event || freqData?.module_summary?.expenses?.last_event}
+              updatedBy={freqData?.last_updated_by}
+              eventCount={(freqData?.module_summary?.payments?.count || 0) + (freqData?.module_summary?.expenses?.count || 0)}
+              module="Cash Flow"
+              events={(freqData?.events || []).filter(e => ['payments', 'expenses'].includes(e.affected_module))}
+              loaded={freqData !== null}
+            />
             <div className="chart-container">
               <ResponsiveContainer>
                 <LineChart data={timelineData}>
