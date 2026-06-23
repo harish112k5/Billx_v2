@@ -4,7 +4,7 @@ import api from '../api/axios';
 import { fmt, fmtFull } from '../components/KPICard';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
-  CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell
+  CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell, LabelList
 } from 'recharts';
 import { BarChart3, TrendingUp, Activity, AlertTriangle, Wallet } from 'lucide-react';
 import DataFreshnessIndicator from '../components/DataFreshnessIndicator';
@@ -68,12 +68,24 @@ export default function AnalyticsPage() {
   ].filter(d => d.value > 0);
 
   // Budget vs Actual chart data
-  const budgetActualData = budget_health ? [
-    { name: 'Planned Budget',   value: budget_health.planned_budget,  fill: '#4E79A7' },
-    { name: 'Actual Cost',      value: budget_health.total_expenses,  fill: budget_health.total_expenses > budget_health.planned_budget ? '#E15759' : '#59A14F' },
-    { name: 'Revenue Received', value: budget_health.total_received,  fill: '#59A14F' },
-    { name: 'Planned Profit',   value: budget_health.planned_profit,  fill: '#B07AA1' },
-  ] : [];
+  let budgetActualData = [];
+  if (budget_health) {
+    const pBudget = parseFloat(budget_health.planned_budget) || 0;
+    const aCost = parseFloat(budget_health.total_expenses) || 0;
+    const rev = parseFloat(budget_health.total_received) || 0;
+    const prof = parseFloat(budget_health.planned_profit) || 0;
+
+    const costPct = pBudget > 0 ? ((aCost / pBudget) * 100).toFixed(1) + '% Used' : '';
+    const revPct = pBudget > 0 ? ((rev / pBudget) * 100).toFixed(1) + '% Received' : '';
+    const profPct = pBudget > 0 ? ((prof / pBudget) * 100).toFixed(1) + '% Margin' : '';
+    
+    budgetActualData = [
+      { name: 'Planned Budget',   value: pBudget, fill: '#4E79A7', progressText: '' },
+      { name: 'Actual Cost',      value: aCost,   fill: aCost > pBudget ? '#E15759' : '#59A14F', progressText: costPct },
+      { name: 'Revenue Received', value: rev,     fill: '#59A14F', progressText: revPct },
+      { name: 'Planned Profit',   value: prof,    fill: '#B07AA1', progressText: profPct },
+    ];
+  }
 
   // Expense type pie data
   const expenseTypeData = Object.entries(expense_breakdown || {}).map(([type, data]) => ({
@@ -140,6 +152,12 @@ export default function AnalyticsPage() {
                   {budgetActualData.map((entry, index) => (
                     <Cell key={index} fill={entry.fill} />
                   ))}
+                  <LabelList 
+                    dataKey="progressText" 
+                    position="insideRight" 
+                    fill="#FFFFFF" 
+                    style={{ fontSize: 13, fontWeight: 700, fontFamily: 'Rajdhani, sans-serif', textShadow: '0px 1px 3px rgba(0,0,0,0.8)' }}
+                  />
                 </Bar>
               </BarChart>
             </ResponsiveContainer>

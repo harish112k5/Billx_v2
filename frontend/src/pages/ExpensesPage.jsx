@@ -5,7 +5,7 @@ import { fmt, fmtFull } from '../components/KPICard';
 import {
   ResponsiveContainer, PieChart, Pie, Cell, Tooltip
 } from 'recharts';
-import { DollarSign, Plus, X, TrendingDown, Package, Wrench, Users, Truck, AlertTriangle } from 'lucide-react';
+import { DollarSign, Plus, X, TrendingDown, Package, Wrench, Users, Truck, AlertTriangle, Edit2, Trash2 } from 'lucide-react';
 
 const EXPENSE_TYPE_COLORS = {
   material:  '#4E79A7',
@@ -59,6 +59,7 @@ export default function ExpensesPage() {
   const [typeFilter, setTypeFilter] = useState('');
   const [saving,   setSaving]   = useState(false);
   const [budgetWarning, setBudgetWarning] = useState(null);
+  const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({
     expense_type: 'material', category: '', description: '',
     amount: '', quantity: '', expense_date: new Date().toISOString().split('T')[0],
@@ -86,14 +87,48 @@ export default function ExpensesPage() {
     setSaving(true);
     setBudgetWarning(null);
     try {
-      const res = await api.post(`/projects/${id}/expenses`, form);
-      if (res.data.budget_exceeded) {
+      let res;
+      if (editingId) {
+        res = await api.put(`/projects/${id}/expenses/${editingId}`, form);
+      } else {
+        res = await api.post(`/projects/${id}/expenses`, form);
+      }
+      if (res.data && res.data.budget_exceeded) {
         setBudgetWarning(res.data.warning);
       }
       setShowAdd(false);
+      setEditingId(null);
       setForm(f => ({ ...f, amount: '', description: '', vendor_name: '', category: '', quantity: '', boq_id: '' }));
       load();
+    } catch (err) {
+      alert(err.response?.data?.error || err.message || 'Failed to save expense');
     } finally { setSaving(false); }
+  };
+
+  const handleEdit = (e) => {
+    setForm({
+      expense_type: e.expense_type || 'material',
+      category: e.category || '',
+      description: e.description || '',
+      amount: e.amount || '',
+      quantity: e.quantity || '',
+      expense_date: e.expense_date ? new Date(e.expense_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+      vendor_name: e.vendor_name || '',
+      boq_id: e.boq_id || '',
+      payment_status: e.payment_status || 'pending',
+    });
+    setEditingId(e.expense_id);
+    setShowAdd(true);
+  };
+
+  const handleDelete = async (expenseId) => {
+    if (!window.confirm('Are you sure you want to delete this expense?')) return;
+    try {
+      await api.delete(`/projects/${id}/expenses/${expenseId}`);
+      load();
+    } catch (err) {
+      alert(err.response?.data?.error || err.message || 'Failed to delete expense');
+    }
   };
 
   const totalExpenses = typeSummary.reduce((s, r) => s + parseFloat(r.total || 0), 0);
@@ -112,7 +147,15 @@ export default function ExpensesPage() {
           <div className="page-title">Project Expenses</div>
           <div className="page-subtitle">Track material, manpower, machinery, logistics and miscellaneous costs</div>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowAdd(true)}>
+        <button className="btn btn-primary" onClick={() => {
+          setEditingId(null);
+          setForm({
+            expense_type: 'material', category: '', description: '',
+            amount: '', quantity: '', expense_date: new Date().toISOString().split('T')[0],
+            vendor_name: '', boq_id: '', payment_status: 'pending',
+          });
+          setShowAdd(true);
+        }}>
           <Plus size={14} /> Add Expense
         </button>
       </div>
@@ -204,7 +247,7 @@ export default function ExpensesPage() {
                 <tr>
                   <th>Date</th><th>Type</th><th>Category</th><th>Description</th>
                   <th>BOQ Item</th><th>Vendor</th>
-                  <th>Amount</th><th>Status</th>
+                  <th>Amount</th><th>Status</th><th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -232,10 +275,16 @@ export default function ExpensesPage() {
                         {e.payment_status || 'pending'}
                       </span>
                     </td>
+                    <td>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button className="btn btn-ghost btn-sm" onClick={() => handleEdit(e)} title="Edit"><Edit2 size={14} /></button>
+                        <button className="btn btn-ghost btn-sm" style={{ color: 'var(--red)' }} onClick={() => handleDelete(e.expense_id)} title="Delete"><Trash2 size={14} /></button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
                 {expenses.length === 0 && (
-                  <tr><td colSpan={8} style={{ textAlign: 'center', padding: 32, color: 'var(--text-muted)' }}>
+                  <tr><td colSpan={9} style={{ textAlign: 'center', padding: 32, color: 'var(--text-muted)' }}>
                     No expenses recorded yet. Add one using the button above.
                   </td></tr>
                 )}
@@ -250,7 +299,7 @@ export default function ExpensesPage() {
         <div className="modal-overlay" onClick={() => setShowAdd(false)}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 600 }}>
             <div className="modal-header">
-              <div className="modal-title">Add Expense</div>
+              <div className="modal-title">{editingId ? 'Edit Expense' : 'Add Expense'}</div>
               <button className="btn btn-ghost btn-sm" onClick={() => setShowAdd(false)}>
                 <X size={14} />
               </button>
@@ -339,7 +388,7 @@ export default function ExpensesPage() {
               disabled={saving || !form.amount || !form.expense_date}
               style={{ width: '100%', justifyContent: 'center' }}
             >
-              {saving ? <><div className="loader" style={{ width: 16, height: 16, borderWidth: 2 }} /> Saving...</> : 'Record Expense'}
+              {saving ? <><div className="loader" style={{ width: 16, height: 16, borderWidth: 2 }} /> Saving...</> : (editingId ? 'Update Expense' : 'Record Expense')}
             </button>
           </div>
         </div>
