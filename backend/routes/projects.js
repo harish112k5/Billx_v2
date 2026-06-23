@@ -18,37 +18,25 @@ router.get('/', verifyToken, async (req, res) => {
   try {
     const [rows] = await db.execute(
       `SELECT p.*, u.name AS created_by_name,
-              COUNT(DISTINCT r.ra_bill_id) AS total_ra_bills,
-              COALESCE(SUM(DISTINCT r.payment_received), 0) AS total_received,
-              COUNT(DISTINCT b.boq_id) AS total_boq_items,
-              COALESCE(SUM(pe.amount), 0) AS total_expenses,
-              CASE 
-                WHEN p.planned_budget > 0 
-                THEN ROUND(COALESCE(SUM(pe.amount), 0) / p.planned_budget * 100, 2)
-                ELSE 0 
-              END AS budget_used_percent
+              (SELECT COUNT(DISTINCT r.ra_bill_id) FROM ra_bills r WHERE r.project_id = p.project_id) AS total_ra_bills,
+              (SELECT COALESCE(SUM(r.payment_received), 0) FROM ra_bills r WHERE r.project_id = p.project_id) AS total_received,
+              (SELECT COUNT(DISTINCT b.boq_id) FROM boq_items b WHERE b.project_id = p.project_id) AS total_boq_items,
+              (SELECT COALESCE(SUM(pe.amount), 0) FROM project_expenses pe WHERE pe.project_id = p.project_id) AS total_expenses
        FROM projects p
-       LEFT JOIN users u          ON p.created_by = u.user_id
-       LEFT JOIN ra_bills r       ON r.project_id  = p.project_id
-       LEFT JOIN boq_items b      ON b.project_id  = p.project_id
-       LEFT JOIN project_expenses pe ON pe.project_id = p.project_id
-        GROUP BY 
-          p.project_id, p.project_code, p.project_name, p.project_location, 
-          p.client_name, p.work_order_number, p.work_order_date, 
-          p.contract_value, p.planned_budget, p.planned_profit, p.project_manager,
-          p.start_date, p.end_date, p.status, p.description, 
-          p.created_by, p.created_at, p.updated_at, u.name
-        ORDER BY p.created_at DESC`
+       LEFT JOIN users u ON p.created_by = u.user_id
+       ORDER BY p.created_at DESC`
     );
 
-    // Add computed budget_status and current_profit
+    // Add computed budget_status, budget_used_percent, and current_profit
     const enriched = rows.map(p => {
-      const budgetUsed = parseFloat(p.budget_used_percent) || 0;
-      const totalReceived = parseFloat(p.total_received) || 0;
       const totalExpenses = parseFloat(p.total_expenses) || 0;
+      const plannedBudget = parseFloat(p.planned_budget) || 0;
+      const budgetUsed = plannedBudget > 0 ? Math.round((totalExpenses / plannedBudget) * 10000) / 100 : 0;
+      const totalReceived = parseFloat(p.total_received) || 0;
       const currentProfit = totalReceived - totalExpenses;
       return {
         ...p,
+        budget_used_percent: budgetUsed,
         budget_status: getBudgetStatus(budgetUsed),
         current_profit: currentProfit,
       };
