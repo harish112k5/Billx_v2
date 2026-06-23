@@ -150,4 +150,92 @@ router.post('/:id/expenses', verifyToken, async (req, res) => {
   }
 });
 
+// PUT /api/projects/:id/expenses/:expenseId
+router.put('/:id/expenses/:expenseId', verifyToken, async (req, res) => {
+  try {
+    const {
+      expense_type, category, description, amount,
+      expense_date, vendor_name, payment_status,
+      boq_id, quantity
+    } = req.body;
+
+    const updatedAmount = parseFloat(amount) || 0;
+
+    await db.execute(
+      `UPDATE project_expenses
+       SET expense_type = ?, category = ?, description = ?, amount = ?, quantity = ?,
+           expense_date = ?, vendor_name = ?, payment_status = ?, boq_id = ?
+       WHERE expense_id = ? AND project_id = ?`,
+      [
+        expense_type || 'material', category || null, description || null, updatedAmount, quantity || null,
+        expense_date, vendor_name || null, payment_status || 'pending', boq_id || null,
+        req.params.expenseId, req.params.id
+      ]
+    );
+
+    // Re-calculate BOQ actual cost if boq_id is present
+    if (boq_id) {
+      await db.execute(
+        `UPDATE boq_items SET actual_cost = (
+           SELECT COALESCE(SUM(amount), 0) FROM project_expenses WHERE boq_id = ?
+         ) WHERE boq_id = ?`,
+        [boq_id, boq_id]
+      );
+    }
+
+    await logDataEvent(db, req.params.id, 'manual_expense_update', 'expenses', {
+      description: `Updated expense: ₹${updatedAmount} — ${description || 'No description'}`,
+      amount_after: updatedAmount,
+      performed_by: req.user.user_id,
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE /api/projects/:id/expenses/:expenseId
+router.delete('/:id/expenses/:expenseId', verifyToken, async (req, res) => {
+  try {
+    // First, get the boq_id of the expense to update the BOQ actual cost after deletion
+    const [rows] = await db.execute(
+      'SELECT boq_id FROM project_expenses WHERE expense_id = ? AND project_id = ?',
+      [req.params.expenseId, req.params.id]
+    );
+
+    let boq_id = null;
+    if (rows.length > 0) {
+      boq_id = rows[0].boq_id;
+    }
+
+    const [result] = await db.execute(
+      'DELETE FROM project_expenses WHERE expense_id = ? AND project_id = ?',
+      [req.params.expenseId, req.params.id]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, error: 'Expense not found' });
+    }
+
+    if (boq_id) {
+      await db.execute(
+        `UPDATE boq_items SET actual_cost = (
+           SELECT COALESCE(SUM(amount), 0) FROM project_expenses WHERE boq_id = ?
+         ) WHERE boq_id = ?`,
+        [boq_id, boq_id]
+      );
+    }
+
+    await logDataEvent(db, req.params.id, 'manual_expense_delete', 'expenses', {
+      description: `Deleted an expense`,
+      performed_by: req.user.user_id,
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 module.exports = router;
