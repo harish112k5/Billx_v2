@@ -457,13 +457,19 @@ router.delete('/:id', verifyToken, async (req, res) => {
     );
     // 7. project_budgets
     await conn.execute('DELETE FROM project_budgets WHERE project_id = ?', [projectId]);
-    // 8. boq_items
+    // 8. boq_allocations
+    await conn.execute(
+      `DELETE ba FROM boq_allocations ba 
+       JOIN boq_items bi ON ba.boq_id = bi.boq_id 
+       WHERE bi.project_id = ?`, [projectId]
+    );
+    // 9. boq_items
     await conn.execute('DELETE FROM boq_items WHERE project_id = ?', [projectId]);
-    // 9. project_contracts
+    // 10. project_contracts
     await conn.execute('DELETE FROM project_contracts WHERE project_id = ?', [projectId]);
-    // 10. project_investors
-    await conn.execute('DELETE FROM project_investors WHERE project_id = ?', [projectId]);
-    // 11. finally, projects
+    // 11. investments
+    await conn.execute('DELETE FROM investments WHERE project_id = ?', [projectId]);
+    // 12. finally, projects
     await conn.execute('DELETE FROM projects WHERE project_id = ?', [projectId]);
 
     await conn.commit();
