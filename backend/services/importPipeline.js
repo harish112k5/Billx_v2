@@ -15,6 +15,7 @@
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 const excelParser = require('./excelParser');
+const scheduleEngine = require('./scheduleEngine');
 
 async function runRABillImport({ project_id, contract_id, file_path, import_id, imported_by }) {
   const conn = await db.getConnection();
@@ -244,6 +245,45 @@ async function runRABillImport({ project_id, contract_id, file_path, import_id, 
       } catch (nbErr) {
         result.errors.push(`Non-BOQ ${nonBOQ.serial_no}: ${nbErr.message}`);
       }
+    }
+
+    // ── 7. Schedule import (Time Dimension) ────────────────────
+    try {
+      const XLSX = require('xlsx');
+      const workbook = XLSX.readFile(file_path, { cellDates: true, raw: false, dateNF: 'yyyy-mm-dd' });
+      const scheduleData = excelParser.parseScheduleSheet(workbook);
+
+      if (scheduleData && scheduleData.length > 0) {
+        // Map item_code to boq_id
+        const [boqItems] = await conn.execute(
+          `SELECT boq_id, item_code FROM boq_items WHERE project_id = ?`,
+          [project_id]
+        );
+        const boqMap = new Map(boqItems.map(b => [b.item_code, b.boq_id]));
+
+        const schedules = scheduleData.map(s => ({
+          boq_id: boqMap.get(s.item_code),
+          period_start: s.period_start,
+          period_end: s.period_end,
+          planned_quantity: s.planned_quantity,
+          planned_amount: s.planned_amount
+        })).filter(s => s.boq_id);
+
+        if (schedules.length > 0) {
+          await scheduleEngine.bulkUpsertSchedules(project_id, schedules);
+        }
+      } else {
+        // No Schedule sheet — auto-generate default schedule
+        const [hasSchedule] = await db.query(
+          `SELECT COUNT(*) as count FROM boq_item_schedules WHERE project_id = ?`,
+          [project_id]
+        );
+        if (hasSchedule[0].count === 0) {
+          await scheduleEngine.generateDefaultSchedule(project_id);
+        }
+      }
+    } catch (schedErr) {
+      result.errors.push(`Schedule import: ${schedErr.message}`);
     }
 
     await conn.commit();

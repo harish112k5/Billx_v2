@@ -600,4 +600,33 @@ function parseBudgetExcel(filePath) {
   return { header, items };
 }
 
-module.exports = { parsePreview, parseFullFile, parseBudgetExcel };
+/**
+ * parseScheduleSheet — Parses the optional 'Schedule' sheet from v2 templates.
+ * Returns null if sheet doesn't exist (old template — will auto-generate).
+ */
+function parseScheduleSheet(workbook) {
+  const sheet = workbook.Sheets['Schedule'];
+  if (!sheet) return null; // Old template — caller should auto-generate
+
+  const data = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false });
+  const schedules = [];
+
+  // Skip header row (row 0)
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    if (!row[0]) continue; // Skip empty rows
+
+    schedules.push({
+      item_code: row[0]?.toString().trim(),
+      period_start: parseCellDate(row[1]),
+      period_end: parseCellDate(row[2]),
+      planned_quantity: parseFloat(row[3]) || 0,
+      planned_amount: parseFloat(row[4]) || 0,
+      notes: row[7] || ''
+    });
+  }
+
+  return schedules;
+}
+
+module.exports = { parsePreview, parseFullFile, parseBudgetExcel, parseScheduleSheet };

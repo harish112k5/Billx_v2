@@ -335,4 +335,48 @@ async function getCashflow(project_id) {
   };
 }
 
-module.exports = { getProjectDashboard, getProjectAnalytics, getCashflow };
+// ─────────────────────────────────────────────────────────────────
+// Time-Based Analytics (3D: Time × Money × Work)
+// ─────────────────────────────────────────────────────────────────
+async function getTimeBasedAnalytics(project_id) {
+  const scheduleEngine = require('./scheduleEngine');
+
+  const timeline = await scheduleEngine.getTimeline(project_id);
+  const evm = await scheduleEngine.calculateEVM(project_id);
+
+  // Burn rate: average monthly actual cost
+  let burnRate = 0;
+  if (timeline && timeline.length >= 1) {
+    const totalCost = timeline.reduce((sum, t) => sum + (t.actual_cost || 0), 0);
+    burnRate = timeline.length > 0 ? parseFloat((totalCost / timeline.length).toFixed(2)) : 0;
+  }
+
+  // Billing velocity: monthly RA bill amounts
+  const [billingVelocity] = await db.execute(`
+    SELECT 
+      DATE_FORMAT(bill_period_from, '%Y-%m') as month,
+      SUM(basic_amount_this_bill) as monthly_billing
+    FROM ra_bills
+    WHERE project_id = ?
+    GROUP BY month
+    ORDER BY month
+  `, [project_id]);
+
+  // Schedule health
+  let scheduleHealth = 'unknown';
+  if (evm && evm.SPI !== undefined) {
+    if (evm.SPI >= 1 && evm.CPI >= 1) scheduleHealth = 'healthy';
+    else if (evm.SPI >= 0.9 && evm.CPI >= 0.9) scheduleHealth = 'at_risk';
+    else scheduleHealth = 'critical';
+  }
+
+  return {
+    timeline,
+    evm,
+    burnRate,
+    billingVelocity,
+    scheduleHealth
+  };
+}
+
+module.exports = { getProjectDashboard, getProjectAnalytics, getCashflow, getTimeBasedAnalytics };
