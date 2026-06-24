@@ -90,7 +90,7 @@ export default function DataFreshnessIndicator({
         </div>
         {events.length > 0 && (
           <button className="dfb-history-btn" onClick={() => setShowHistory(true)}>
-            <History size={11} /> View History
+            <History size={14} /> View History
           </button>
         )}
       </div>

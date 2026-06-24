@@ -204,9 +204,10 @@ export default function ProjectDashboard() {
             { label: 'BOQ',       icon: ListChecks,   path: `/projects/${id}/boq`,       color: 'var(--amber)' },
             { label: 'RA Bills',  icon: FileText,     path: `/projects/${id}/ra-bills`,  color: 'var(--purple)' },
             { label: 'Analytics', icon: BarChart3,    path: `/projects/${id}/analytics`, color: 'var(--teal)' },
+            { label: '3D Time',   icon: Clock,        path: `/projects/${id}/analytics/time`, color: 'var(--orange)' },
             { label: 'Investors', icon: DollarSign,   path: `/projects/${id}/investors`, color: 'var(--green)' },
             { label: 'Expenses',  icon: TrendingDown, path: `/projects/${id}/expenses`,  color: 'var(--red)' },
-            { label: 'History',   icon: Clock,        path: `/projects/${id}/history`,   color: 'var(--text-primary)' },
+            { label: 'History',   icon: History,      path: `/projects/${id}/history`,   color: 'var(--text-primary)' },
           ].map(nav => (
             <Link
               key={nav.label}

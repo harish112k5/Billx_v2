@@ -1183,12 +1183,12 @@ input, select, textarea { font-family: var(--font-body); }
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 3px 8px;
+  padding: 4px 12px;
   border-radius: 4px;
   background: transparent;
   border: 1px solid var(--border-dark);
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   transition: var(--transition);
@@ -1437,4 +1437,146 @@ input, select, textarea { font-family: var(--font-body); }
     max-height: none;
     padding: 6px 10px;
   }
+}
+
+/* ── TopBar & Breadcrumbs ───────────────────────────────────── */
+.top-bar {
+  display: flex;
+  align-items: center;
+  padding: 1rem 0; /* Removed horizontal padding to align with layout */
+  min-height: 60px;
+}
+
+.breadcrumbs {
+  display: flex;
+  align-items: center;
+}
+
+.breadcrumb-segment {
+  display: inline-flex;
+  align-items: center;
+}
+
+.breadcrumb-link {
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: color 0.2s ease-in-out;
+}
+
+.breadcrumb-link:hover {
+  color: var(--text-primary);
+}
+
+.breadcrumb-separator {
+  color: var(--text-muted);
+  margin: 0 0.5rem;
+  display: flex;
+  align-items: center;
+}
+
+.breadcrumb-current {
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+/* ── EVM Dashboard ──────────────────────────────────────────── */
+.evm-dashboard {
+  margin-bottom: 8px;
+}
+
+.evm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.evm-card {
+  background: var(--card-dark);
+  padding: 20px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-dark);
+  border-left: 4px solid var(--border-dark);
+  transition: var(--transition);
+}
+
+.evm-card:hover {
+  border-color: var(--amber);
+  transform: translateY(-2px);
+}
+
+.evm-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.evm-card-icon {
+  display: flex;
+  align-items: center;
+}
+
+.evm-card-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 500;
+}
+
+.evm-card-value {
+  font-size: 24px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  margin-bottom: 4px;
+}
+
+.evm-card-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* ── Time Phase Table ───────────────────────────────────────── */
+.time-phase-table {
+  overflow-x: auto;
+}
+
+.time-phase-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.time-phase-table th {
+  background: var(--surface-dark);
+  color: var(--text-muted);
+  padding: 12px 16px;
+  text-align: left;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border-dark);
+  white-space: nowrap;
+}
+
+.time-phase-table td {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-dark);
+  color: var(--text-primary);
+}
+
+.time-phase-table tbody tr:hover {
+  background: var(--surface-hover);
+}
+
+.time-phase-table .period-header {
+  background: var(--surface-dark);
+}
+
+.time-phase-table .period-header td {
+  font-weight: 600;
+  color: var(--amber);
+  padding: 8px 16px;
+  font-size: 13px;
 }
