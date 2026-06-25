@@ -1,0 +1,40 @@
+{
+  "finSummary": [
+    {
+      "project_id": "13e901ea-e14d-47c2-a501-e95275d7cf14",
+      "project_name": "Scratch Project 2026",
+      "project_code": "SP-1782365485439",
+      "contract_value": "5000000.00",
+      "status": "ongoing",
+      "total_certified_basic": "100000.00",
+      "total_gross_amount": "118000.00",
+      "total_net_payable": "110000.00",
+      "total_received": "0.00",
+      "total_retention": "5000.00",
+      "total_expenses": "0.00",
+      "total_invested": "0.00",
+      "net_position": "0.00",
+      "total_ra_bills": 1
+    }
+  ],
+  "boqProgress": [
+    {
+      "item_code": "1003",
+      "planned_quantity": "200.0000",
+      "executed_quantity": "0.0000",
+      "status": "Not Started"
+    },
+    {
+      "item_code": "1001",
+      "planned_quantity": "1000.0000",
+      "executed_quantity": "500.0000",
+      "status": "In Progress"
+    },
+    {
+      "item_code": "1002",
+      "planned_quantity": "500.0000",
+      "executed_quantity": "250.0000",
+      "status": "In Progress"
+    }
+  ]
+}

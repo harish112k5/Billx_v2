@@ -897,3 +897,686 @@ input, select, textarea { font-family: var(--font-body); }
   background: var(--surface-dark);
   color:      var(--green);
 }
+
+/* ── Budget Progress Bar ───────────────────────────────────── */
+.budget-progress-bar {
+  padding: 8px 0;
+}
+
+.budget-progress-bar .progress-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.budget-progress-bar .progress-track {
+  height: 12px;
+  background: var(--surface-dark);
+  border-radius: 6px;
+  overflow: hidden;
+  position: relative;
+  border: 1px solid var(--border-dark);
+}
+
+.budget-progress-bar .progress-fill {
+  height: 100%;
+  border-radius: 6px;
+  transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+
+.budget-progress-bar .progress-fill::after {
+  content: '';
+  position: absolute;
+  top: 0; right: 0; bottom: 0;
+  width: 24px;
+  border-radius: 0 6px 6px 0;
+}
+
+.budget-progress-bar .progress-fill.green {
+  background: linear-gradient(90deg, #059669, #10B981);
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.4);
+}
+
+.budget-progress-bar .progress-fill.orange {
+  background: linear-gradient(90deg, #D97706, #F59E0B);
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.4);
+}
+
+.budget-progress-bar .progress-fill.red {
+  background: linear-gradient(90deg, #DC2626, #EF4444);
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.4);
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 12px rgba(239, 68, 68, 0.4); }
+  50%      { box-shadow: 0 0 24px rgba(239, 68, 68, 0.7); }
+}
+
+.budget-progress-bar .progress-markers {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+}
+
+.budget-progress-bar .marker {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.budget-progress-bar .marker.green  { color: var(--green); }
+.budget-progress-bar .marker.orange { color: var(--amber); }
+.budget-progress-bar .marker.red    { color: var(--red); }
+
+/* ── Status Badge (Budget) ─────────────────────────────────── */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.status-badge.green {
+  background: var(--green-glow);
+  color: var(--green);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.status-badge.orange {
+  background: var(--amber-glow);
+  color: var(--amber);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.status-badge.red {
+  background: var(--red-glow);
+  color: var(--red);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* ── Mini Progress Bar (Dashboard Table) ───────────────────── */
+.mini-progress {
+  width: 80px;
+  height: 6px;
+  background: var(--surface-dark);
+  border-radius: 3px;
+  overflow: hidden;
+  border: 1px solid var(--border-dark);
+}
+
+.mini-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.8s ease;
+}
+
+.mini-fill.green  { background: var(--green); }
+.mini-fill.orange { background: var(--amber); }
+.mini-fill.red    { background: var(--red); }
+
+/* ── Profit Badge ──────────────────────────────────────────── */
+.profit-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.profit-badge.positive {
+  background: var(--green-glow);
+  color: var(--green);
+}
+
+.profit-badge.negative {
+  background: var(--red-glow);
+  color: var(--red);
+}
+
+/* ── Overrun Alert Cards ───────────────────────────────────── */
+.overrun-alert {
+  padding: 12px 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-dark);
+  background: var(--surface-dark);
+  transition: var(--transition);
+}
+
+.overrun-alert:hover {
+  background: var(--surface-hover);
+}
+
+.overrun-alert.overrun-severe {
+  border-left: 3px solid var(--red);
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.overrun-alert.overrun-critical {
+  border-left: 3px solid var(--amber);
+  background: rgba(245, 158, 11, 0.05);
+}
+
+.overrun-alert.overrun-warning {
+  border-left: 3px solid var(--blue);
+}
+
+.overrun-alert-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.overrun-badge {
+  display: inline-flex;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.overrun-badge.severe  { background: var(--red-glow); color: var(--red); }
+.overrun-badge.critical { background: var(--amber-glow); color: var(--amber); }
+.overrun-badge.warning { background: var(--blue-glow); color: var(--blue); }
+
+.overrun-alert-body {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  flex-wrap: wrap;
+}
+
+/* ── Surface helper ────────────────────────────────────────── */
+.surface { background: var(--surface-dark); }
+
+/* ── Data Freshness Indicator ──────────────────────────────── */
+.data-freshness-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 12px;
+  max-height: 32px;
+  background: var(--surface-dark);
+  border: 1px solid var(--border-dark);
+  border-radius: 6px;
+  margin-bottom: 10px;
+  gap: 10px;
+}
+
+.dfb-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.freshness-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.freshness-dot.dot-green {
+  background: var(--green);
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
+}
+
+.freshness-dot.dot-amber {
+  background: var(--amber);
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.6);
+}
+
+.freshness-dot.dot-red {
+  background: var(--red);
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.6);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.freshness-dot.dot-neutral {
+  background: var(--text-muted);
+  opacity: 0.5;
+}
+
+.dfb-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.dfb-date {
+  font-size: 11px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dfb-meta {
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dfb-history-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  border-radius: 4px;
+  background: transparent;
+  border: 1px solid var(--border-dark);
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.dfb-history-btn:hover {
+  border-color: var(--amber);
+  color: var(--amber);
+  background: var(--amber-glow);
+}
+
+/* ── Data History Panel (Slide-in) ─────────────────────────── */
+.data-history-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(2px);
+  z-index: 1100;
+  animation: fadeIn 0.2s ease;
+}
+
+.data-history-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 380px;
+  height: 100vh;
+  background: var(--card-dark);
+  border-left: 1px solid var(--border-dark);
+  border-top: 3px solid #F59E0B;
+  z-index: 1101;
+  display: flex;
+  flex-direction: column;
+  animation: slideInRight 0.25s ease;
+  overflow: hidden;
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+
+.dhp-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-dark);
+  flex-shrink: 0;
+}
+
+.dhp-title {
+  font-family: var(--font-title);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dhp-title svg { color: var(--amber); }
+
+.dhp-subtitle {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.dhp-timeline {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+}
+
+.dhp-empty {
+  text-align: center;
+  padding: 40px 16px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.dhp-empty svg {
+  display: block;
+  margin: 0 auto 12px;
+  opacity: 0.4;
+}
+
+/* ── Timeline Items ────────────────────────────────────────── */
+.timeline-item {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 0;
+}
+
+.timeline-dot-line {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+  width: 22px;
+}
+
+.timeline-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.timeline-dot.dot-amber {
+  background: var(--amber-glow);
+  color: var(--amber);
+}
+
+.timeline-dot.dot-blue {
+  background: var(--blue-glow);
+  color: var(--blue);
+}
+
+.timeline-line {
+  width: 1px;
+  flex: 1;
+  background: var(--border-dark);
+  min-height: 16px;
+}
+
+.timeline-content {
+  flex: 1;
+  padding-bottom: 20px;
+  min-width: 0;
+}
+
+.timeline-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 3px;
+}
+
+.timeline-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--amber);
+}
+
+.timeline-time {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.timeline-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.timeline-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.timeline-change {
+  margin-top: 4px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+}
+
+.timeline-file {
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ── Data Status Banner ────────────────────────────────────── */
+.data-status-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: var(--surface-dark);
+  border: 1px solid var(--border-dark);
+  border-radius: var(--radius);
+  margin-bottom: 16px;
+  gap: 12px;
+}
+
+.data-status-banner.fresh-green  { border-left: 3px solid var(--green); }
+.data-status-banner.fresh-amber  { border-left: 3px solid var(--amber); }
+.data-status-banner.fresh-red    { border-left: 3px solid var(--red); }
+
+.dsb-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.dsb-info {
+  min-width: 0;
+}
+
+.dsb-primary {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dsb-secondary {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+
+/* ── Hero chip 'as of' date ────────────────────────────────── */
+.chip-date {
+  font-size: 9px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  font-style: italic;
+}
+
+@media (max-width: 768px) {
+  .data-history-panel {
+    width: 100%;
+  }
+  .data-freshness-bar {
+    flex-wrap: wrap;
+    max-height: none;
+    padding: 6px 10px;
+  }
+}
+
+/* ── TopBar & Breadcrumbs ───────────────────────────────────── */
+.top-bar {
+  display: flex;
+  align-items: center;
+  padding: 1rem 0; /* Removed horizontal padding to align with layout */
+  min-height: 60px;
+}
+
+.breadcrumbs {
+  display: flex;
+  align-items: center;
+}
+
+.breadcrumb-segment {
+  display: inline-flex;
+  align-items: center;
+}
+
+.breadcrumb-link {
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: color 0.2s ease-in-out;
+}
+
+.breadcrumb-link:hover {
+  color: var(--text-primary);
+}
+
+.breadcrumb-separator {
+  color: var(--text-muted);
+  margin: 0 0.5rem;
+  display: flex;
+  align-items: center;
+}
+
+.breadcrumb-current {
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+/* ── EVM Dashboard ──────────────────────────────────────────── */
+.evm-dashboard {
+  margin-bottom: 8px;
+}
+
+.evm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.evm-card {
+  background: var(--card-dark);
+  padding: 20px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-dark);
+  border-left: 4px solid var(--border-dark);
+  transition: var(--transition);
+}
+
+.evm-card:hover {
+  border-color: var(--amber);
+  transform: translateY(-2px);
+}
+
+.evm-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.evm-card-icon {
+  display: flex;
+  align-items: center;
+}
+
+.evm-card-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 500;
+}
+
+.evm-card-value {
+  font-size: 24px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  margin-bottom: 4px;
+}
+
+.evm-card-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* ── Time Phase Table ───────────────────────────────────────── */
+.time-phase-table {
+  overflow-x: auto;
+}
+
+.time-phase-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.time-phase-table th {
+  background: var(--surface-dark);
+  color: var(--text-muted);
+  padding: 12px 16px;
+  text-align: left;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border-dark);
+  white-space: nowrap;
+}
+
+.time-phase-table td {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-dark);
+  color: var(--text-primary);
+}
+
+.time-phase-table tbody tr:hover {
+  background: var(--surface-hover);
+}
+
+.time-phase-table .period-header {
+  background: var(--surface-dark);
+}
+
+.time-phase-table .period-header td {
+  font-weight: 600;
+  color: var(--amber);
+  padding: 8px 16px;
+  font-size: 13px;
+}

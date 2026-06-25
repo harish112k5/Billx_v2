@@ -5,24 +5,41 @@ import { fmt, fmtFull } from '../components/KPICard';
 import {
   ResponsiveContainer, PieChart, Pie, Cell, Tooltip
 } from 'recharts';
-import { DollarSign, Plus, X, TrendingDown, Package, Wrench, Users, Truck } from 'lucide-react';
+import { DollarSign, Plus, X, TrendingDown, Package, Wrench, Users, Truck, AlertTriangle, Edit2, Trash2 } from 'lucide-react';
 
-const CATEGORY_COLORS = {
-  labour:    '#F59E0B',
-  material:  '#3B82F6',
-  equipment: '#8B5CF6',
-  overhead:  '#10B981',
-  transport: '#06B6D4',
-  other:     '#64748B',
+const EXPENSE_TYPE_COLORS = {
+  material:  '#4E79A7',
+  manpower:  '#F28E2B',
+  machinery: '#E15759',
+  movement:  '#76B7B2',
+  misc:      '#B07AA1',
 };
 
-const CATEGORY_ICONS = {
-  labour:    Users,
+const EXPENSE_TYPE_LABELS = {
+  material:  'Material (Cement, Steel, Sand, etc.)',
+  manpower:  'Manpower (Mason, Helper, etc.)',
+  machinery: 'Machinery (Excavator, JCB, etc.)',
+  movement:  'Movement/Logistics (Transport, Diesel, etc.)',
+  misc:      'Misc/Non-Billable (Office, Security, etc.)',
+};
+
+const EXPENSE_TYPE_ICONS = {
   material:  Package,
-  equipment: Wrench,
-  overhead:  DollarSign,
-  transport: Truck,
-  other:     DollarSign,
+  manpower:  Users,
+  machinery: Wrench,
+  movement:  Truck,
+  misc:      DollarSign,
+};
+
+const getCategoryPlaceholder = (type) => {
+  const placeholders = {
+    material: 'e.g., Cement, Steel, Sand, Aggregate, Bricks',
+    manpower: 'e.g., Mason, Helper, Bar Bender, Carpenter',
+    machinery: 'e.g., JCB Rental, Excavator, Concrete Pump',
+    movement: 'e.g., Transport, Diesel, Loading/Unloading',
+    misc: 'e.g., Office Expense, Security, Tea/Refreshments'
+  };
+  return placeholders[type] || 'Enter category';
 };
 
 const TOOLTIP_STYLE = {
@@ -35,63 +52,122 @@ export default function ExpensesPage() {
   const { id } = useParams();
   const [expenses, setExpenses] = useState([]);
   const [summary,  setSummary]  = useState([]);
+  const [typeSummary, setTypeSummary] = useState([]);
+  const [boqItems, setBoqItems] = useState([]);
   const [loading,  setLoading]  = useState(true);
   const [showAdd,  setShowAdd]  = useState(false);
-  const [catFilter, setCatFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
   const [saving,   setSaving]   = useState(false);
+  const [budgetWarning, setBudgetWarning] = useState(null);
+  const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({
-    category: 'labour', sub_category: '', description: '',
-    amount: '', expense_date: new Date().toISOString().split('T')[0],
-    vendor_name: '', invoice_number: '', payment_status: 'pending',
+    expense_type: 'material', category: '', description: '',
+    amount: '', quantity: '', expense_date: new Date().toISOString().split('T')[0],
+    vendor_name: '', boq_id: '', payment_status: 'pending',
   });
 
   const load = () => {
     setLoading(true);
-    const params = catFilter ? `?category=${catFilter}` : '';
-    api.get(`/projects/${id}/expenses${params}`)
-      .then(r => {
-        setExpenses(r.data.data || []);
-        setSummary(r.data.summary || []);
-      })
-      .finally(() => setLoading(false));
+    const params = typeFilter ? `?expense_type=${typeFilter}` : '';
+    Promise.all([
+      api.get(`/projects/${id}/expenses${params}`),
+      api.get(`/projects/${id}/boq`).catch(() => ({ data: { data: [] } })),
+    ]).then(([expRes, boqRes]) => {
+      setExpenses(expRes.data.data || []);
+      setSummary(expRes.data.summary || []);
+      setTypeSummary(expRes.data.type_summary || []);
+      setBoqItems(boqRes.data.data || []);
+    }).finally(() => setLoading(false));
   };
 
-  useEffect(load, [id, catFilter]);
+  useEffect(load, [id, typeFilter]);
 
   const handleAdd = async () => {
     if (!form.amount || !form.expense_date) return;
     setSaving(true);
+    setBudgetWarning(null);
     try {
-      await api.post(`/projects/${id}/expenses`, form);
+      let res;
+      if (editingId) {
+        res = await api.put(`/projects/${id}/expenses/${editingId}`, form);
+      } else {
+        res = await api.post(`/projects/${id}/expenses`, form);
+      }
+      if (res.data && res.data.budget_exceeded) {
+        setBudgetWarning(res.data.warning);
+      }
       setShowAdd(false);
-      setForm(f => ({ ...f, amount: '', description: '', vendor_name: '', invoice_number: '' }));
+      setEditingId(null);
+      setForm(f => ({ ...f, amount: '', description: '', vendor_name: '', category: '', quantity: '', boq_id: '' }));
       load();
+    } catch (err) {
+      alert(err.response?.data?.error || err.message || 'Failed to save expense');
     } finally { setSaving(false); }
   };
 
-  const totalExpenses = summary.reduce((s, r) => s + parseFloat(r.total || 0), 0);
-
-  const pieData = summary.map(s => ({
-    name:  s.category,
-    value: parseFloat(s.total) || 0,
-    color: CATEGORY_COLORS[s.category] || '#64748B',
-  }));
-
-  const statusBadge = {
-    pending: 'badge-amber', paid: 'badge-green', partial: 'badge-blue'
+  const handleEdit = (e) => {
+    setForm({
+      expense_type: e.expense_type || 'material',
+      category: e.category || '',
+      description: e.description || '',
+      amount: e.amount || '',
+      quantity: e.quantity || '',
+      expense_date: e.expense_date ? new Date(e.expense_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+      vendor_name: e.vendor_name || '',
+      boq_id: e.boq_id || '',
+      payment_status: e.payment_status || 'pending',
+    });
+    setEditingId(e.expense_id);
+    setShowAdd(true);
   };
+
+  const handleDelete = async (expenseId) => {
+    if (!window.confirm('Are you sure you want to delete this expense?')) return;
+    try {
+      await api.delete(`/projects/${id}/expenses/${expenseId}`);
+      load();
+    } catch (err) {
+      alert(err.response?.data?.error || err.message || 'Failed to delete expense');
+    }
+  };
+
+  const totalExpenses = typeSummary.reduce((s, r) => s + parseFloat(r.total || 0), 0);
+
+  const pieData = typeSummary.map(s => ({
+    name:  s.expense_type || 'material',
+    value: parseFloat(s.total) || 0,
+    color: EXPENSE_TYPE_COLORS[s.expense_type] || '#64748B',
+    count: parseInt(s.count) || 0,
+  }));
 
   return (
     <div className="fade-in">
       <div className="page-header">
         <div>
           <div className="page-title">Project Expenses</div>
-          <div className="page-subtitle">Track labour, material, equipment and overhead costs</div>
+          <div className="page-subtitle">Track material, manpower, machinery, logistics and miscellaneous costs</div>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowAdd(true)}>
+        <button className="btn btn-primary" onClick={() => {
+          setEditingId(null);
+          setForm({
+            expense_type: 'material', category: '', description: '',
+            amount: '', quantity: '', expense_date: new Date().toISOString().split('T')[0],
+            vendor_name: '', boq_id: '', payment_status: 'pending',
+          });
+          setShowAdd(true);
+        }}>
           <Plus size={14} /> Add Expense
         </button>
       </div>
+
+      {/* Budget Warning Banner */}
+      {budgetWarning && (
+        <div style={{ padding: '12px 16px', background: 'rgba(245, 158, 11, 0.1)', border: '1px solid var(--amber)', borderRadius: 'var(--radius)', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: 'var(--amber)' }}>
+          <AlertTriangle size={16} />
+          <span>{budgetWarning}</span>
+          <button onClick={() => setBudgetWarning(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--amber)', cursor: 'pointer' }}><X size={14} /></button>
+        </div>
+      )}
 
       {/* ── KPI Row ──────────────────────────────────────────── */}
       <div className="kpi-grid kpi-grid-4 mb-24">
@@ -101,15 +177,15 @@ export default function ExpensesPage() {
           <div className="kpi-value red">{fmt(totalExpenses)}</div>
           <div className="kpi-sub">{expenses.length} entries</div>
         </div>
-        {summary.slice(0, 3).map(s => {
-          const Icon = CATEGORY_ICONS[s.category] || DollarSign;
+        {typeSummary.slice(0, 3).map(s => {
+          const Icon = EXPENSE_TYPE_ICONS[s.expense_type] || DollarSign;
           const pct  = totalExpenses > 0 ? ((parseFloat(s.total) / totalExpenses) * 100).toFixed(0) : 0;
           return (
-            <div className="kpi-card amber" key={s.category}>
+            <div className="kpi-card amber" key={s.expense_type}>
               <div className="kpi-icon amber"><Icon /></div>
-              <div className="kpi-label" style={{ textTransform: 'capitalize' }}>{s.category}</div>
+              <div className="kpi-label" style={{ textTransform: 'capitalize' }}>{s.expense_type}</div>
               <div className="kpi-value amber">{fmt(s.total)}</div>
-              <div className="kpi-sub">{pct}% of total</div>
+              <div className="kpi-sub">{pct}% of total · {s.count} entries</div>
             </div>
           );
         })}
@@ -119,12 +195,12 @@ export default function ExpensesPage() {
       {pieData.length > 0 && (
         <div className="section-card mb-16" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, alignItems: 'center' }}>
           <div>
-            <div className="section-title mb-16"><DollarSign /> Expense Breakdown by Category</div>
-            {summary.map(s => (
-              <div key={s.category} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <div className="section-title mb-16"><DollarSign /> Expense Breakdown by Type</div>
+            {typeSummary.map(s => (
+              <div key={s.expense_type} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div style={{ width: 10, height: 10, borderRadius: '50%', background: CATEGORY_COLORS[s.category] || '#64748B' }} />
-                  <span style={{ fontSize: 12, color: 'var(--text-secondary)', textTransform: 'capitalize' }}>{s.category}</span>
+                  <div style={{ width: 10, height: 10, borderRadius: '50%', background: EXPENSE_TYPE_COLORS[s.expense_type] || '#64748B' }} />
+                  <span style={{ fontSize: 12, color: 'var(--text-secondary)', textTransform: 'capitalize' }}>{s.expense_type}</span>
                   <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>({s.count})</span>
                 </div>
                 <span style={{ fontFamily: 'Rajdhani,sans-serif', fontWeight: 700, color: 'var(--text-primary)' }}>{fmtFull(s.total)}</span>
@@ -148,16 +224,16 @@ export default function ExpensesPage() {
       <div className="section-card">
         <div className="section-header">
           <div className="section-title"><TrendingDown /> All Expenses</div>
-          {/* Category Filter */}
+          {/* Type Filter */}
           <select
             className="form-select"
             style={{ width: 'auto', padding: '6px 12px', fontSize: 12 }}
-            value={catFilter}
-            onChange={e => setCatFilter(e.target.value)}
+            value={typeFilter}
+            onChange={e => setTypeFilter(e.target.value)}
           >
-            <option value="">All Categories</option>
-            {['labour','material','equipment','overhead','transport','other'].map(c => (
-              <option key={c} value={c} style={{ textTransform: 'capitalize' }}>{c}</option>
+            <option value="">All Types</option>
+            {Object.keys(EXPENSE_TYPE_LABELS).map(t => (
+              <option key={t} value={t} style={{ textTransform: 'capitalize' }}>{t}</option>
             ))}
           </select>
         </div>
@@ -169,9 +245,9 @@ export default function ExpensesPage() {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Date</th><th>Category</th><th>Description</th>
-                  <th>Vendor</th><th>Invoice No</th>
-                  <th>Amount</th><th>Status</th>
+                  <th>Date</th><th>Type</th><th>Category</th><th>Description</th>
+                  <th>BOQ Item</th><th>Vendor</th>
+                  <th>Amount</th><th>Status</th><th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -179,25 +255,36 @@ export default function ExpensesPage() {
                   <tr key={e.expense_id}>
                     <td style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{e.expense_date}</td>
                     <td>
-                      <span className="badge badge-muted" style={{ textTransform: 'capitalize' }}>{e.category}</span>
+                      <span className="badge badge-muted" style={{ textTransform: 'capitalize', background: EXPENSE_TYPE_COLORS[e.expense_type] + '22', color: EXPENSE_TYPE_COLORS[e.expense_type] || 'var(--text-muted)', border: 'none' }}>
+                        {e.expense_type || '—'}
+                      </span>
                     </td>
-                    <td style={{ maxWidth: 250 }}>
+                    <td style={{ fontSize: 12, textTransform: 'capitalize' }}>{e.category || '—'}</td>
+                    <td style={{ maxWidth: 200 }}>
                       <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {e.description || e.sub_category || '—'}
                       </div>
                     </td>
+                    <td style={{ fontSize: 11, color: 'var(--amber)' }}>
+                      {e.boq_item_code ? `${e.boq_item_code}` : '—'}
+                    </td>
                     <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{e.vendor_name || '—'}</td>
-                    <td className="mono" style={{ fontSize: 11 }}>{e.invoice_number || '—'}</td>
                     <td className="mono" style={{ color: 'var(--red)', fontWeight: 600 }}>{fmtFull(e.amount)}</td>
                     <td>
-                      <span className={`badge ${statusBadge[e.payment_status] || 'badge-muted'}`}>
+                      <span className={`badge ${e.payment_status === 'paid' ? 'badge-green' : e.payment_status === 'partial' ? 'badge-blue' : 'badge-amber'}`}>
                         {e.payment_status || 'pending'}
                       </span>
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button className="btn btn-ghost btn-sm" onClick={() => handleEdit(e)} title="Edit"><Edit2 size={14} /></button>
+                        <button className="btn btn-ghost btn-sm" style={{ color: 'var(--red)' }} onClick={() => handleDelete(e.expense_id)} title="Delete"><Trash2 size={14} /></button>
+                      </div>
                     </td>
                   </tr>
                 ))}
                 {expenses.length === 0 && (
-                  <tr><td colSpan={7} style={{ textAlign: 'center', padding: 32, color: 'var(--text-muted)' }}>
+                  <tr><td colSpan={9} style={{ textAlign: 'center', padding: 32, color: 'var(--text-muted)' }}>
                     No expenses recorded yet. Add one using the button above.
                   </td></tr>
                 )}
@@ -210,9 +297,9 @@ export default function ExpensesPage() {
       {/* ── Add Expense Modal ───────────────────────────────── */}
       {showAdd && (
         <div className="modal-overlay" onClick={() => setShowAdd(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 540 }}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 600 }}>
             <div className="modal-header">
-              <div className="modal-title">Add Expense</div>
+              <div className="modal-title">{editingId ? 'Edit Expense' : 'Add Expense'}</div>
               <button className="btn btn-ghost btn-sm" onClick={() => setShowAdd(false)}>
                 <X size={14} />
               </button>
@@ -220,19 +307,33 @@ export default function ExpensesPage() {
 
             <div className="grid-2">
               <div className="form-group">
-                <label className="form-label">Category *</label>
-                <select className="form-select" value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}>
-                  {['labour','material','equipment','overhead','transport','other'].map(c => (
-                    <option key={c} value={c} style={{ textTransform: 'capitalize' }}>{c}</option>
+                <label className="form-label">Expense Type *</label>
+                <select className="form-select" value={form.expense_type} onChange={e => setForm(f => ({ ...f, expense_type: e.target.value }))}>
+                  {Object.entries(EXPENSE_TYPE_LABELS).map(([val, label]) => (
+                    <option key={val} value={val}>{label}</option>
                   ))}
                 </select>
               </div>
               <div className="form-group">
-                <label className="form-label">Sub-Category</label>
-                <input className="form-input" value={form.sub_category}
-                  placeholder="e.g. Excavation Labour"
-                  onChange={e => setForm(f => ({ ...f, sub_category: e.target.value }))} />
+                <label className="form-label">Category *</label>
+                <input className="form-input" value={form.category}
+                  placeholder={getCategoryPlaceholder(form.expense_type)}
+                  onChange={e => setForm(f => ({ ...f, category: e.target.value }))} />
               </div>
+            </div>
+
+            {/* BOQ Item Link */}
+            <div className="form-group">
+              <label className="form-label">Link to BOQ Item (Optional)</label>
+              <select className="form-select" value={form.boq_id} onChange={e => setForm(f => ({ ...f, boq_id: e.target.value }))}>
+                <option value="">— Not linked to BOQ —</option>
+                {boqItems.map(item => (
+                  <option key={item.boq_id} value={item.boq_id}>
+                    {item.item_code} — {(item.description || '').substring(0, 50)} (Budget: {fmtFull(item.planned_amount)})
+                  </option>
+                ))}
+              </select>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>Linking helps track budget vs actual cost per work item</div>
             </div>
 
             <div className="form-group">
@@ -246,28 +347,28 @@ export default function ExpensesPage() {
               <div className="form-group">
                 <label className="form-label">Amount (₹) *</label>
                 <input type="number" className="form-input" value={form.amount}
-                  placeholder="50000"
+                  placeholder="50000" min="1"
                   onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} />
               </div>
               <div className="form-group">
-                <label className="form-label">Date *</label>
-                <input type="date" className="form-input" value={form.expense_date}
-                  onChange={e => setForm(f => ({ ...f, expense_date: e.target.value }))} />
+                <label className="form-label">Quantity</label>
+                <input type="number" className="form-input" value={form.quantity}
+                  placeholder="e.g., 100 bags, 50 workers"
+                  onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} />
               </div>
             </div>
 
             <div className="grid-2">
               <div className="form-group">
-                <label className="form-label">Vendor Name</label>
+                <label className="form-label">Date *</label>
+                <input type="date" className="form-input" value={form.expense_date}
+                  onChange={e => setForm(f => ({ ...f, expense_date: e.target.value }))} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Vendor/Supplier Name</label>
                 <input className="form-input" value={form.vendor_name}
                   placeholder="Vendor / Supplier name"
                   onChange={e => setForm(f => ({ ...f, vendor_name: e.target.value }))} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Invoice Number</label>
-                <input className="form-input" value={form.invoice_number}
-                  placeholder="INV-2025-001"
-                  onChange={e => setForm(f => ({ ...f, invoice_number: e.target.value }))} />
               </div>
             </div>
 
@@ -287,7 +388,7 @@ export default function ExpensesPage() {
               disabled={saving || !form.amount || !form.expense_date}
               style={{ width: '100%', justifyContent: 'center' }}
             >
-              {saving ? <><div className="loader" style={{ width: 16, height: 16, borderWidth: 2 }} /> Saving...</> : 'Record Expense'}
+              {saving ? <><div className="loader" style={{ width: 16, height: 16, borderWidth: 2 }} /> Saving...</> : (editingId ? 'Update Expense' : 'Record Expense')}
             </button>
           </div>
         </div>

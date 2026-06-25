@@ -296,39 +296,69 @@ function parseBOQSheet(sheet) {
   const items    = [];
   const warnings = [];
 
-  // Data starts at row 10 (index 9) per the prompt specification
-  // Headers span rows 8-9 (merged)
-  // Col A=item_no, B=item_code, C=description, D=unit, E=plan_qty, F=rate, G=plan_amt
-  // H=qty_upto_date, I=qty_upto_prev, J=qty_this_bill
-  // K=amt_upto_date, L=amt_upto_prev, M=amt_this_bill
-
-  let dataStart = 9; // default index 9 = row 10
-  // Find data start by looking for first numeric item code
-  for (let i = 5; i < Math.min(20, data.length); i++) {
+  // Find header row (looks for "Item No" or "Item Code")
+  let headerRowIndex = -1;
+  for (let i = 0; i < Math.min(20, data.length); i++) {
     const row = data[i];
-    const colB = (row[1] || '').toString().trim();
-    const colA = (row[0] || '').toString().trim();
-    if (colB && !isNaN(parseInt(colB)) && colB.length >= 4) {
-      dataStart = i;
+    if (!row) continue;
+    const firstCol = (row[0] || '').toString().trim().toLowerCase();
+    const secondCol = (row[1] || '').toString().trim().toLowerCase();
+    if (firstCol.includes('item no') || secondCol.includes('item code') || firstCol === 'sl no' || firstCol === 's.no') {
+      headerRowIndex = i;
       break;
     }
-    if (colA && !isNaN(parseInt(colA)) && parseInt(colA) > 0) {
-      dataStart = i;
-      break;
-    }
+  }
+
+  // If no clear header found, fallback to old hardcoded logic (index 9)
+  let dataStart = headerRowIndex !== -1 ? headerRowIndex + 1 : 9;
+
+  let colMap = null;
+  if (headerRowIndex !== -1) {
+      const headers = data[headerRowIndex].map(h => (h || '').toString().trim().toLowerCase());
+      colMap = {
+          item_number: Math.max(headers.findIndex(h => h.includes('item no') || h === 'sl no' || h === 's.no'), 0),
+          item_code: Math.max(headers.indexOf('item code'), 1),
+          description: Math.max(headers.indexOf('description'), 2),
+          unit: Math.max(headers.indexOf('unit'), 3),
+          planned_quantity: Math.max(headers.findIndex(h => h.includes('plan') && h.includes('qty')), 4),
+          unit_rate: Math.max(headers.findIndex(h => h.includes('rate')), 5),
+          planned_amount: Math.max(headers.findIndex(h => h.includes('plan') && h.includes('amt')), 6),
+          qty_upto_date: Math.max(headers.findIndex(h => h.includes('qty') && h.includes('date')), headers.indexOf('qty upto date')),
+          qty_upto_prev: Math.max(headers.findIndex(h => h.includes('qty') && h.includes('prev')), headers.indexOf('qty upto prev')),
+          qty_this_bill: Math.max(headers.findIndex(h => h.includes('qty') && h.includes('this bill')), headers.indexOf('qty this bill')),
+          amt_upto_date: Math.max(headers.findIndex(h => h.includes('amt') && h.includes('date')), headers.indexOf('amt upto date')),
+          amt_upto_prev: Math.max(headers.findIndex(h => h.includes('amt') && h.includes('prev')), headers.indexOf('amt upto prev')),
+          amt_this_bill: Math.max(headers.findIndex(h => h.includes('amt') && h.includes('this bill')), headers.indexOf('amt this bill'))
+      };
+      
+      // Fix default fallbacks if not found (for standard template)
+      if (colMap.qty_upto_date === -1) colMap.qty_upto_date = 7;
+      if (colMap.qty_upto_prev === -1) colMap.qty_upto_prev = 8;
+      if (colMap.qty_this_bill === -1) colMap.qty_this_bill = 9;
+      if (colMap.amt_upto_date === -1) colMap.amt_upto_date = 10;
+      if (colMap.amt_upto_prev === -1) colMap.amt_upto_prev = 11;
+      if (colMap.amt_this_bill === -1) colMap.amt_this_bill = 12;
+  } else {
+      // Legacy V1 Fallback
+      colMap = {
+          item_number: 0, item_code: 1, description: 2, unit: 3,
+          planned_quantity: 4, unit_rate: 5, planned_amount: 6,
+          qty_upto_date: 7, qty_upto_prev: 8, qty_this_bill: 9,
+          amt_upto_date: 10, amt_upto_prev: 11, amt_this_bill: 12
+      };
   }
 
   for (let i = dataStart; i < data.length; i++) {
     const row = data[i];
 
     // item_code detection — skip if empty or non-numeric
-    const rawCode = (row[1] || row[0] || '').toString().trim();
+    const rawCode = (row[colMap.item_code] || row[colMap.item_number] || '').toString().trim();
     if (!rawCode || isNaN(parseInt(rawCode))) continue;
 
-    const itemNum   = parseInt((row[0] || '').toString()) || null;
+    const itemNum   = parseInt((row[colMap.item_number] || '').toString()) || null;
     const itemCode  = rawCode;
-    const desc      = (row[2] || '').toString().trim();
-    const unit      = (row[3] || '').toString().trim();
+    const desc      = (row[colMap.description] || '').toString().trim();
+    const unit      = (row[colMap.unit] || '').toString().trim();
 
     if (!desc || !unit) {
       warnings.push(`Row ${i + 1}: Missing description or unit for item ${itemCode}`);
@@ -342,15 +372,15 @@ function parseBOQSheet(sheet) {
       item_code:         itemCode,
       description:       desc,
       unit:              unit,
-      planned_quantity:  parseNum(row[4]),
-      unit_rate:         parseNum(row[5]),
-      planned_amount:    parseNum(row[6]),
-      qty_upto_date:     parseNum(row[7]),
-      qty_upto_previous: parseNum(row[8]),
-      qty_this_bill:     parseNum(row[9]),
-      amount_upto_date:  parseNum(row[10]),
-      amount_upto_prev:  parseNum(row[11]),
-      amount_this_bill:  parseNum(row[12]),
+      planned_quantity:  parseNum(row[colMap.planned_quantity]),
+      unit_rate:         parseNum(row[colMap.unit_rate]),
+      planned_amount:    parseNum(row[colMap.planned_amount]),
+      qty_upto_date:     parseNum(row[colMap.qty_upto_date]),
+      qty_upto_previous: parseNum(row[colMap.qty_upto_prev]),
+      qty_this_bill:     parseNum(row[colMap.qty_this_bill]),
+      amount_upto_date:  parseNum(row[colMap.amt_upto_date]),
+      amount_upto_prev:  parseNum(row[colMap.amt_upto_prev]),
+      amount_this_bill:  parseNum(row[colMap.amt_this_bill]),
     });
   }
 
@@ -472,14 +502,6 @@ function extractNumbers(row) {
 
 function parseDate(str) {
   if (!str) return null;
-  // Handles DD-MM-YYYY or DD/MM/YYYY
-  const parts = str.split(/[-\/]/);
-  if (parts.length === 3) {
-    const [d, m, y] = parts;
-    const year = y.length === 2 ? `20${y}` : y;
-    return `${year}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
-  }
-  return null;
 }
 
 function formatDate(val) {
@@ -527,19 +549,29 @@ function parseBudgetExcel(filePath) {
     if (colA.includes('department')) header.department = (row[1] || '').toString().trim();
     if (colA.includes('supervisor')) header.supervisor_name = (row[1] || '').toString().trim();
   }
-
-  // Find data start
-  let dataStart = -1;
-  for (let i = 0; i < data.length; i++) {
-    const colB = (data[i][1] || '').toString().toLowerCase().trim();
-    if (colB === 'project tasks') {
-      dataStart = i + 1; // start reading from next row
+  // Find data start and col map
+  let headerRowIndex = -1;
+  for (let i = 0; i < Math.min(10, data.length); i++) {
+    const row = data[i];
+    if (!row) continue;
+    const str = row.join(' ').toLowerCase();
+    if (str.includes('task name') || str.includes('wbs code') || str.includes('project tasks')) {
+      headerRowIndex = i;
       break;
     }
   }
 
-  if (dataStart === -1) {
+  if (headerRowIndex === -1) {
     throw new Error("This doesn't look like a Budget template — couldn't find the task table header.");
+  }
+
+  const headers = data[headerRowIndex].map(h => (h || '').toString().trim().toLowerCase());
+  const isV2 = headers.includes('wbs code');
+
+  // Fallback to row index + 1 for V2, but old template had 'project tasks' above headers
+  let dataStart = headerRowIndex + 1;
+  if (!isV2 && (data[headerRowIndex][1] || '').toString().toLowerCase().trim() === 'project tasks') {
+      dataStart = headerRowIndex + 2; // Old template header offset
   }
 
   const items = [];
@@ -553,43 +585,76 @@ function parseBudgetExcel(filePath) {
     }
   };
 
+  const colMap = {
+    wbsCode: headers.indexOf('wbs code'),
+    taskName: headers.indexOf('task name'),
+    category: headers.indexOf('category'),
+    assignedTo: headers.indexOf('assigned to'),
+    plannedHours: headers.indexOf('planned hours'),
+    actualHours: headers.indexOf('actual hours'),
+    laborRate: headers.indexOf('labor rate'),
+    plannedMaterial: headers.indexOf('planned material units'),
+    actualMaterial: headers.indexOf('actual material units'),
+    materialRate: headers.indexOf('material rate'),
+    travelCost: headers.indexOf('travel cost'),
+    equipmentCost: headers.indexOf('equipment cost'),
+    fixedCost: headers.indexOf('fixed cost'),
+    miscCost: headers.indexOf('misc cost')
+  };
+
   for (let i = dataStart; i < data.length; i++) {
     const row = data[i];
-    const taskName = (row[1] || '').toString().trim();
+    let taskName = '', taskCode = '';
     
+    if (isV2) {
+        taskCode = colMap.wbsCode !== -1 ? (row[colMap.wbsCode] || '').toString().trim() : '';
+        taskName = colMap.taskName !== -1 ? (row[colMap.taskName] || '').toString().trim() : '';
+    } else {
+        taskName = (row[1] || '').toString().trim();
+        taskCode = (row[0] || '').toString().trim();
+    }
+
     // Stop condition
-    if (!taskName || taskName.toLowerCase().includes('subtotal')) {
+    if (!taskName || taskName.toLowerCase().includes('subtotal') || taskName.toLowerCase().includes('totals')) {
       break;
     }
 
-    const wbsCode = (row[0] || '').toString().trim();
+    const wbsCode = taskCode;
     
     // Validate numeric columns
-    checkNumeric(i, 'Planned Hours', 3, row);
-    checkNumeric(i, 'Actual Hours', 4, row);
-    checkNumeric(i, 'Labor Rate', 5, row);
-    checkNumeric(i, 'Planned Material Units', 6, row);
-    checkNumeric(i, 'Material Rate', 7, row);
-    checkNumeric(i, 'Travel Cost', 8, row);
-    checkNumeric(i, 'Equipment Cost', 9, row);
-    checkNumeric(i, 'Fixed Cost', 10, row);
-    checkNumeric(i, 'Misc Cost', 11, row);
+    const numCols = [
+      { name: 'Planned Hours', idx: isV2 ? colMap.plannedHours : 3 },
+      { name: 'Actual Hours', idx: isV2 ? colMap.actualHours : 4 },
+      { name: 'Labor Rate', idx: isV2 ? colMap.laborRate : 5 },
+      { name: 'Planned Material Units', idx: isV2 ? colMap.plannedMaterial : 6 },
+      { name: 'Material Rate', idx: isV2 ? colMap.materialRate : 7 },
+      { name: 'Travel Cost', idx: isV2 ? colMap.travelCost : 8 },
+      { name: 'Equipment Cost', idx: isV2 ? colMap.equipmentCost : 9 },
+      { name: 'Fixed Cost', idx: isV2 ? colMap.fixedCost : 10 },
+      { name: 'Misc Cost', idx: isV2 ? colMap.miscCost : 11 }
+    ];
+
+    for (const col of numCols) {
+        if (col.idx !== -1) checkNumeric(i, col.name, col.idx, row);
+    }
+
+    const getVal = (idx, fallback) => (isV2 && idx !== -1) ? row[idx] : row[fallback];
 
     items.push({
       wbs_code: wbsCode,
       task_name: taskName,
-      assigned_to: (row[2] || '').toString().trim(),
-      planned_hours: parseNum(row[3]),
-      actual_hours: parseNum(row[4]),
-      labor_rate: parseNum(row[5]),
-      planned_material_units: parseNum(row[6]),
-      material_rate: parseNum(row[7]), // Using actual_material_units column? Wait, spec: Col G is Planned Material Units, Col H is Material Rate. But the spec says: G=planned_material_units, H=material_rate. Wait, the schema has actual_material_units too. The excel template only has UNITS (G) and INR/UNITS (H).
-      // If template only has planned_material_units, actual_material_units is 0 for import.
-      actual_material_units: 0,
-      travel_cost: parseNum(row[8]),
-      equipment_cost: parseNum(row[9]),
-      fixed_cost: parseNum(row[10]),
-      misc_cost: parseNum(row[11]),
+      category: (isV2 && colMap.category !== -1) ? (row[colMap.category] || '').toString().trim() : 'Misc',
+      assigned_to: ((getVal(colMap.assignedTo, 2) || '')).toString().trim(),
+      planned_hours: parseNum(getVal(colMap.plannedHours, 3)),
+      actual_hours: parseNum(getVal(colMap.actualHours, 4)),
+      labor_rate: parseNum(getVal(colMap.laborRate, 5)),
+      planned_material_units: parseNum(getVal(colMap.plannedMaterial, 6)),
+      actual_material_units: parseNum(getVal(colMap.actualMaterial, -1)),
+      material_rate: parseNum(getVal(colMap.materialRate, 7)),
+      travel_cost: parseNum(getVal(colMap.travelCost, 8)),
+      equipment_cost: parseNum(getVal(colMap.equipmentCost, 9)),
+      fixed_cost: parseNum(getVal(colMap.fixedCost, 10)),
+      misc_cost: parseNum(getVal(colMap.miscCost, 11)),
     });
   }
 
@@ -600,4 +665,192 @@ function parseBudgetExcel(filePath) {
   return { header, items };
 }
 
-module.exports = { parsePreview, parseFullFile, parseBudgetExcel };
+/**
+ * parseScheduleSheet — Parses the optional 'Schedule' sheet from v2 templates.
+ * Returns null if sheet doesn't exist (old template — will auto-generate).
+ */
+function parseScheduleSheet(workbook) {
+    const sheet = workbook.Sheets['Schedule'];
+    if (!sheet) {
+        console.log('No Schedule sheet found — will auto-generate from project dates');
+        return null;
+    }
+
+    // Convert to JSON with header row
+    const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
+    if (!rawData || rawData.length < 2) return [];
+
+    // Find header row (look for "Item Code" in first column)
+    let headerRowIndex = -1;
+    for (let i = 0; i < Math.min(rawData.length, 10); i++) {
+        const row = rawData[i];
+        if (row && row[0] && row[0].toString().trim().toLowerCase() === 'item code') {
+            headerRowIndex = i;
+            break;
+        }
+    }
+
+    if (headerRowIndex === -1) {
+        console.warn('Schedule sheet found but no "Item Code" header detected');
+        return null;
+    }
+
+    const headers = rawData[headerRowIndex].map(h => h.toString().trim().toLowerCase());
+    const colMap = {
+        itemCode: headers.indexOf('item code'),
+        periodStart: headers.indexOf('period start'),
+        periodEnd: headers.indexOf('period end'),
+        plannedQty: headers.indexOf('planned qty'),
+        plannedAmount: headers.indexOf('planned amount'),
+        notes: headers.indexOf('notes')
+    };
+
+    // Validate required columns
+    if (colMap.itemCode === -1 || colMap.periodStart === -1 || colMap.plannedQty === -1) {
+        console.warn('Schedule sheet missing required columns');
+        return null;
+    }
+
+    const schedules = [];
+    for (let i = headerRowIndex + 1; i < rawData.length; i++) {
+        const row = rawData[i];
+        if (!row || !row[colMap.itemCode]) continue;
+
+        const itemCode = row[colMap.itemCode].toString().trim();
+        if (!itemCode) continue;
+
+        schedules.push({
+            itemCode: itemCode,
+            periodStart: parseCellDate(row[colMap.periodStart]),
+            periodEnd: parseCellDate(row[colMap.periodEnd]),
+            plannedQuantity: parseFloat(row[colMap.plannedQty]) || 0,
+            plannedAmount: parseFloat(row[colMap.plannedAmount]) || 0,
+            notes: colMap.notes !== -1 ? (row[colMap.notes] || '') : ''
+        });
+    }
+
+    return schedules;
+}
+
+/**
+ * Parse Budget Schedule sheet from Budget template v2
+ */
+function parseBudgetScheduleSheet(workbook) {
+    const sheet = workbook.Sheets['Budget Schedule'];
+    if (!sheet) {
+        console.log('No Budget Schedule sheet found');
+        return null;
+    }
+
+    const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
+    if (!rawData || rawData.length < 2) return [];
+
+    let headerRowIndex = -1;
+    for (let i = 0; i < Math.min(rawData.length, 10); i++) {
+        const row = rawData[i];
+        if (row && row[0] && row[0].toString().trim().toLowerCase() === 'wbs code') {
+            headerRowIndex = i;
+            break;
+        }
+    }
+
+    if (headerRowIndex === -1) return null;
+
+    const headers = rawData[headerRowIndex].map(h => h.toString().trim().toLowerCase());
+    const colMap = {
+        wbsCode: headers.indexOf('wbs code'),
+        periodStart: headers.indexOf('period start'),
+        periodEnd: headers.indexOf('period end'),
+        plannedHours: headers.indexOf('planned hours'),
+        plannedCost: headers.indexOf('planned cost'),
+        actualHours: headers.indexOf('actual hours'),
+        actualCost: headers.indexOf('actual cost')
+    };
+
+    const schedules = [];
+    for (let i = headerRowIndex + 1; i < rawData.length; i++) {
+        const row = rawData[i];
+        if (!row || !row[colMap.wbsCode]) continue;
+
+        schedules.push({
+            wbsCode: row[colMap.wbsCode].toString().trim(),
+            periodStart: parseCellDate(row[colMap.periodStart]),
+            periodEnd: parseCellDate(row[colMap.periodEnd]),
+            plannedHours: parseFloat(row[colMap.plannedHours]) || 0,
+            plannedCost: parseFloat(row[colMap.plannedCost]) || 0,
+            actualHours: parseFloat(row[colMap.actualHours]) || 0,
+            actualCost: parseFloat(row[colMap.actualCost]) || 0
+        });
+    }
+
+    return schedules;
+}
+
+/**
+ * Parse BOQ sheet with new Planned Start/End columns
+ */
+function parseBOQSheetV2(workbook) {
+    const sheet = workbook.Sheets['BOQ'];
+    if (!sheet) throw new Error('BOQ sheet not found');
+
+    const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
+
+    // Find header row
+    let headerRowIndex = -1;
+    for (let i = 0; i < Math.min(rawData.length, 15); i++) {
+        const row = rawData[i];
+        if (row && row[0] && row[0].toString().trim().toLowerCase() === 'item no') {
+            headerRowIndex = i;
+            break;
+        }
+    }
+
+    if (headerRowIndex === -1) throw new Error('BOQ header row not found');
+
+    const headers = rawData[headerRowIndex].map(h => h.toString().trim().toLowerCase());
+    const colMap = {
+        itemNo: headers.indexOf('item no'),
+        itemCode: headers.indexOf('item code'),
+        description: headers.indexOf('description'),
+        unit: headers.indexOf('unit'),
+        plannedQty: headers.indexOf('planned qty'),
+        rate: headers.indexOf('rate'),
+        plannedAmt: headers.indexOf('planned amt'),
+        plannedStart: headers.indexOf('planned start'),  // NEW
+        plannedEnd: headers.indexOf('planned end'),      // NEW
+        qtyUptoDate: headers.indexOf('qty upto date'),
+        qtyUptoPrev: headers.indexOf('qty upto prev'),
+        qtyThisBill: headers.indexOf('qty this bill'),
+        amtUptoDate: headers.indexOf('amt upto date'),
+        amtUptoPrev: headers.indexOf('amt upto prev'),
+        amtThisBill: headers.indexOf('amt this bill')
+    };
+
+    const boqItems = [];
+    for (let i = headerRowIndex + 1; i < rawData.length; i++) {
+        const row = rawData[i];
+        if (!row || !row[colMap.itemCode]) continue;
+
+        boqItems.push({
+            itemNo: parseInt(row[colMap.itemNo]) || 0,
+            itemCode: row[colMap.itemCode].toString().trim(),
+            description: row[colMap.description] || '',
+            unit: row[colMap.unit] || '',
+            plannedQty: parseFloat(row[colMap.plannedQty]) || 0,
+            rate: parseFloat(row[colMap.rate]) || 0,
+            plannedAmt: parseFloat(row[colMap.plannedAmt]) || 0,
+            plannedStart: parseCellDate(row[colMap.plannedStart]),  // NEW
+            plannedEnd: parseCellDate(row[colMap.plannedEnd]),      // NEW
+            qtyUptoDate: parseFloat(row[colMap.qtyUptoDate]) || 0,
+            qtyUptoPrev: parseFloat(row[colMap.qtyUptoPrev]) || 0,
+            qtyThisBill: parseFloat(row[colMap.qtyThisBill]) || 0,
+            amtUptoDate: parseFloat(row[colMap.amtUptoDate]) || 0,
+            amtUptoPrev: parseFloat(row[colMap.amtUptoPrev]) || 0,
+            amtThisBill: parseFloat(row[colMap.amtThisBill]) || 0
+        });
+    }
+
+    return boqItems;
+}
+
+module.exports = { parsePreview, parseFullFile, parseBudgetExcel, parseScheduleSheet, parseBudgetScheduleSheet, parseBOQSheetV2 };

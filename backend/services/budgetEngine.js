@@ -73,10 +73,10 @@ async function getBudgetSummary(project_id) {
 
   // Reconciliation against project_expenses
   const [reconciliationRows] = await db.execute(
-    `SELECT SUM(total_actual) AS budget_actual_total, 
+    `SELECT SUM(actual_amount) AS budget_actual_total,
             SUM(total_expenses_recorded) AS recorded_expenses_total,
-            SUM(total_actual) - SUM(total_expenses_recorded) AS discrepancy
-     FROM v_budget_vs_actual 
+            SUM(actual_amount) - SUM(total_expenses_recorded) AS discrepancy
+     FROM v_budget_vs_actual
      WHERE project_id = ?`,
     [project_id]
   );

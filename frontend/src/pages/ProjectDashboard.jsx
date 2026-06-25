@@ -13,8 +13,10 @@ import {
 import {
   FileText, TrendingUp, Wallet, DollarSign, AlertCircle,
   BarChart3, ListChecks, Upload, ChevronRight, Shield, Percent,
-  Building2, Calendar, Hash, TrendingDown, FileSpreadsheet
+  Building2, Calendar, Hash, TrendingDown, FileSpreadsheet, Clock, History
 } from 'lucide-react';
+import DataFreshnessIndicator from '../components/DataFreshnessIndicator';
+import DataHistoryPanel from '../components/DataHistoryPanel';
 
 const CustomTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
@@ -38,6 +40,8 @@ export default function ProjectDashboard() {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [budgetData, setBudgetData] = useState(null);
+  const [freqData, setFreqData] = useState(null);
+  const [showFullHistory, setShowFullHistory] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -45,11 +49,13 @@ export default function ProjectDashboard() {
     setLoading(true);
     Promise.all([
       api.get(`/projects/${id}/dashboard`),
-      api.get(`/projects/${id}/budget`)
+      api.get(`/projects/${id}/budget`),
+      api.get(`/projects/${id}/data-frequency`).catch(() => ({ data: { data: null } })),
     ])
-      .then(([dashboardRes, budgetRes]) => {
+      .then(([dashboardRes, budgetRes, freqRes]) => {
         setData(dashboardRes.data.data);
         setBudgetData(budgetRes.data.data);
+        setFreqData(freqRes.data.data);
       })
       .catch(e => setError(e.response?.data?.error || 'Failed to load project'))
       .finally(() => setLoading(false));
@@ -69,6 +75,16 @@ export default function ProjectDashboard() {
     </div>
   );
 
+  const handleDeleteProject = async () => {
+    if (!window.confirm('Are you sure you want to delete this project and ALL its data (BOQs, Expenses, RA Bills, etc.)? This action cannot be undone.')) return;
+    try {
+      await api.delete(`/projects/${id}`);
+      navigate('/dashboard');
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to delete project');
+    }
+  };
+
   if (!data) return null;
 
   const { project, planning, execution, billing, variance, ra_progression, top_boq_items, sandwich } = data;
@@ -80,6 +96,34 @@ export default function ProjectDashboard() {
     'Net Payable':       parseFloat(r.net_payable)      || 0,
     'Received':          parseFloat(r.received)          || 0,
   }));
+
+  // Freshness helpers
+  const EVENT_LABELS = {
+    excel_import: 'Excel Import', manual_boq_entry: 'Manual Entry',
+    manual_ra_bill: 'Manual Entry', manual_expense: 'Manual Entry',
+    payment_recorded: 'Payment Update', stage_changed: 'Stage Update',
+    boq_updated: 'BOQ Update', measurement_added: 'Measurement Entry',
+    project_created: 'Project Created',
+  };
+
+  const getFreshnessClass = (dateStr) => {
+    if (!dateStr) return 'fresh-red';
+    const diffDays = Math.floor((new Date() - new Date(dateStr)) / 86400000);
+    if (diffDays <= 7) return 'fresh-green';
+    if (diffDays <= 30) return 'fresh-amber';
+    return 'fresh-red';
+  };
+
+  const formatDateShort = (dateStr) => {
+    if (!dateStr) return null;
+    try {
+      return new Date(dateStr).toLocaleDateString('en-IN', {
+        timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric',
+      });
+    } catch { return null; }
+  };
+
+  const lastUpdateDate = formatDateShort(freqData?.last_updated_at);
 
   return (
     <div className="fade-in">
@@ -100,6 +144,13 @@ export default function ProjectDashboard() {
                 style={{ padding: '2px 8px', height: 'auto', fontSize: 11 }}
               >
                 Edit
+              </button>
+              <button 
+                className="btn btn-ghost btn-sm" 
+                onClick={handleDeleteProject}
+                style={{ padding: '2px 8px', height: 'auto', fontSize: 11, color: 'var(--red)', borderColor: 'rgba(239,68,68,0.2)' }}
+              >
+                Delete
               </button>
             </div>
             <div className="hero-project-name">{project.project_name}</div>
@@ -141,6 +192,7 @@ export default function ProjectDashboard() {
             <div className="hero-chip" key={chip.label}>
               <div className="chip-label">{chip.label}</div>
               <div className="chip-value" style={{ color: chip.color }}>{chip.value}</div>
+              {lastUpdateDate && <div className="chip-date">as of {lastUpdateDate}</div>}
             </div>
           ))}
         </div>
@@ -152,8 +204,10 @@ export default function ProjectDashboard() {
             { label: 'BOQ',       icon: ListChecks,   path: `/projects/${id}/boq`,       color: 'var(--amber)' },
             { label: 'RA Bills',  icon: FileText,     path: `/projects/${id}/ra-bills`,  color: 'var(--purple)' },
             { label: 'Analytics', icon: BarChart3,    path: `/projects/${id}/analytics`, color: 'var(--teal)' },
+            { label: '3D Time',   icon: Clock,        path: `/projects/${id}/analytics/time`, color: 'var(--orange)' },
             { label: 'Investors', icon: DollarSign,   path: `/projects/${id}/investors`, color: 'var(--green)' },
             { label: 'Expenses',  icon: TrendingDown, path: `/projects/${id}/expenses`,  color: 'var(--red)' },
+            { label: 'History',   icon: History,      path: `/projects/${id}/history`,   color: 'var(--text-primary)' },
           ].map(nav => (
             <Link
               key={nav.label}
@@ -174,7 +228,102 @@ export default function ProjectDashboard() {
         </div>
       </div>
 
-      {/* ── Section A.5: Budget Overview ─────────────────────────── */}
+      {/* ── Data Status Banner ─────────────────────────────────── */}
+      {freqData && (
+        <div className={`data-status-banner ${getFreshnessClass(freqData.last_updated_at)}`}>
+          <div className="dsb-left">
+            <span className={`freshness-dot dot-${getFreshnessClass(freqData.last_updated_at).replace('fresh-', '')}`} />
+            <div className="dsb-info">
+              <div className="dsb-primary">
+                <Clock size={11} style={{ marginRight: 4, verticalAlign: 'middle' }} />
+                Last updated: {freqData.last_updated_at
+                  ? new Date(freqData.last_updated_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                  : 'Never'}
+                {freqData.last_event_type && ` · ${EVENT_LABELS[freqData.last_event_type] || freqData.last_event_type} by ${freqData.last_updated_by || 'System'}`}
+              </div>
+              {freqData.events?.[0]?.description && (
+                <div className="dsb-secondary">{freqData.events[0].description}</div>
+              )}
+            </div>
+          </div>
+          <button className="dfb-history-btn" onClick={() => setShowFullHistory(true)}>
+            <History size={11} /> View Full History
+          </button>
+        </div>
+      )}
+
+      <DataHistoryPanel
+        isOpen={showFullHistory}
+        onClose={() => setShowFullHistory(false)}
+        events={freqData?.events || []}
+        moduleName="All Modules"
+      />
+
+      {/* ── Budget Health Section ─────────────────────────────── */}
+      {data.budget_health && data.budget_health.planned_budget > 0 && (
+        <div className="section-card" style={{ marginBottom: 16 }}>
+          <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+            <Wallet size={16} color="var(--green)" /> Budget Health
+            <span className={`status-badge ${data.budget_health.budget_status}`} style={{ marginLeft: 8 }}>
+              {data.budget_health.budget_status === 'green' ? 'Healthy' :
+               data.budget_health.budget_status === 'orange' ? 'Caution' : 'Critical'}
+            </span>
+          </div>
+
+          <div className="kpi-grid kpi-grid-4" style={{ marginBottom: 16 }}>
+            <div className="kpi-card blue">
+              <div className="kpi-icon blue"><Wallet /></div>
+              <div className="kpi-label">Planned Budget</div>
+              <div className="kpi-value blue">{fmt(data.budget_health.planned_budget)}</div>
+              <div className="kpi-sub">{fmtFull(data.budget_health.planned_budget)}</div>
+            </div>
+            <div className="kpi-card red">
+              <div className="kpi-icon red"><TrendingDown /></div>
+              <div className="kpi-label">Total Expenses</div>
+              <div className="kpi-value red">{fmt(data.budget_health.total_expenses)}</div>
+              <div className="kpi-sub">{data.budget_health.budget_used_percent}% of budget</div>
+            </div>
+            <div className={`kpi-card ${data.budget_health.budget_status === 'red' ? 'red' : 'green'}`}>
+              <div className={`kpi-icon ${data.budget_health.budget_status === 'red' ? 'red' : 'green'}`}><DollarSign /></div>
+              <div className="kpi-label">Budget Remaining</div>
+              <div className={`kpi-value ${data.budget_health.budget_status === 'red' ? 'red' : 'green'}`}>
+                {fmt(data.budget_health.planned_budget - data.budget_health.total_expenses)}
+              </div>
+              <div className="kpi-sub">{(100 - data.budget_health.budget_used_percent).toFixed(1)}% left</div>
+            </div>
+            <div className={`kpi-card ${data.budget_health.current_profit >= data.budget_health.planned_profit ? 'green' : 'red'}`}>
+              <div className={`kpi-icon ${data.budget_health.current_profit >= data.budget_health.planned_profit ? 'green' : 'red'}`}><TrendingUp /></div>
+              <div className="kpi-label">Current Profit</div>
+              <div className={`kpi-value ${data.budget_health.current_profit >= data.budget_health.planned_profit ? 'green' : 'red'}`}>
+                {fmt(data.budget_health.current_profit)}
+              </div>
+              <div className="kpi-sub">
+                {data.budget_health.current_profit >= data.budget_health.planned_profit ? 'On Track' : 'Below Target'}
+              </div>
+            </div>
+          </div>
+
+          {/* Budget Progress Bar */}
+          <div className="budget-progress-bar">
+            <div className="progress-labels">
+              <span>0%</span>
+              <span>Budget Consumed: {data.budget_health.budget_used_percent}%</span>
+              <span>100%</span>
+            </div>
+            <div className="progress-track">
+              <div
+                className={`progress-fill ${data.budget_health.budget_status}`}
+                style={{ width: `${Math.min(data.budget_health.budget_used_percent, 100)}%` }}
+              />
+            </div>
+            <div className="progress-markers">
+              <span className="marker green">Safe (&lt;70%)</span>
+              <span className="marker orange">Caution (70-90%)</span>
+              <span className="marker red">Danger (&gt;90%)</span>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="section-card" style={{ marginBottom: 16, padding: '16px 20px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -304,6 +453,15 @@ export default function ProjectDashboard() {
 
         {ra_progression.length > 0 ? (
           <>
+            <DataFreshnessIndicator
+              lastUpdatedAt={freqData?.module_summary?.ra_bill?.last_updated}
+              lastEventType={freqData?.module_summary?.ra_bill?.last_event}
+              updatedBy={freqData?.last_updated_by}
+              eventCount={freqData?.module_summary?.ra_bill?.count || 0}
+              module="RA Bills"
+              events={(freqData?.events || []).filter(e => e.affected_module === 'ra_bill')}
+              loaded={freqData !== null}
+            />
             <div className="chart-container">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData} margin={{ top: 8, right: 16, left: 16, bottom: 8 }}>
@@ -402,6 +560,69 @@ export default function ProjectDashboard() {
             </div>
           </div>
           <SandwichView sandwich={sandwich} projectId={id} />
+        </div>
+      )}
+
+      {/* ── Section F: Recent Activity Timeline ────────────────── */}
+      {freqData?.events?.length > 0 && (
+        <div className="section-card">
+          <div className="section-header">
+            <div className="section-title">
+              <Clock /> Recent Activity
+            </div>
+            <Link to={`/projects/${id}/history`} className="btn btn-ghost btn-sm">
+              View All <ChevronRight size={14} />
+            </Link>
+          </div>
+          <div className="history-timeline">
+            {freqData.events.slice(0, 8).map((event, i) => {
+              const MODULE_COLORS = {
+                boq: 'var(--blue)', ra_bill: 'var(--amber)', measurements: 'var(--teal)',
+                expenses: 'var(--red)', payments: 'var(--green)', analytics: 'var(--purple)',
+              };
+              const MODULE_LABELS_MAP = {
+                boq: 'BOQ', ra_bill: 'RA Bill', measurements: 'Measurements',
+                expenses: 'Expenses', payments: 'Payments', analytics: 'Analytics',
+              };
+              const moduleColor = MODULE_COLORS[event.affected_module] || 'var(--text-muted)';
+              return (
+                <div className="history-event" key={event.event_id || i}>
+                  <div className="history-event-icon" style={{ background: `${moduleColor}15`, color: moduleColor }}>
+                    <Clock size={14} />
+                  </div>
+                  <div className="history-event-body">
+                    <div className="history-event-top">
+                      <div className="history-event-title">
+                        <span className="history-event-type">{EVENT_LABELS[event.event_type] || event.event_type}</span>
+                        <span className="history-event-module" style={{ color: moduleColor, borderColor: `${moduleColor}40` }}>
+                          {MODULE_LABELS_MAP[event.affected_module] || event.affected_module}
+                        </span>
+                      </div>
+                      <div className="history-event-time">{event.time_ago || 'Unknown'}</div>
+                    </div>
+                    <div className="history-event-desc">{event.description || 'No description'}</div>
+                    <div className="history-event-meta">
+                      <span className="history-event-user">👤 {event.performed_by_name || 'System'}</span>
+                      {event.performed_at && (
+                        <span className="history-event-date">
+                          {new Date(event.performed_at).toLocaleString('en-IN', {
+                            timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short',
+                            year: 'numeric', hour: '2-digit', minute: '2-digit',
+                          })}
+                        </span>
+                      )}
+                    </div>
+                    {event.ra_bill_number && (
+                      <span className="badge badge-amber" style={{ marginTop: 4, fontSize: 10 }}>RA-{String(event.ra_bill_number).padStart(2, '0')}</span>
+                    )}
+                    {event.boq_item_code && (
+                      <span className="badge badge-blue" style={{ marginTop: 4, marginLeft: 4, fontSize: 10 }}>{event.boq_item_code}</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>

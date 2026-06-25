@@ -3,10 +3,11 @@ import { useParams } from 'react-router-dom';
 import api from '../api/axios';
 import { fmt, fmtFull } from '../components/KPICard';
 import {
-  ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis,
-  CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell
+  ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
+  CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell, LabelList
 } from 'recharts';
-import { BarChart3, TrendingUp, Activity } from 'lucide-react';
+import { BarChart3, TrendingUp, Activity, AlertTriangle, Wallet } from 'lucide-react';
+import DataFreshnessIndicator from '../components/DataFreshnessIndicator';
 
 const TooltipStyle = {
   contentStyle: { background: '#12121A', border: '1px solid #1E1E2E', borderRadius: 8 },
@@ -14,23 +15,37 @@ const TooltipStyle = {
   itemStyle: { color: '#F1F5F9' }
 };
 
+const EXPENSE_TYPE_COLORS = {
+  material: '#4E79A7',   // Blue
+  manpower: '#F28E2B',   // Orange
+  machinery: '#E15759',  // Red
+  movement: '#76B7B2',   // Teal
+  misc: '#B07AA1'        // Purple
+};
+
 export default function AnalyticsPage() {
   const { id } = useParams();
   const [analytics, setAnalytics] = useState(null);
+  const [overrunData, setOverrunData] = useState(null);
+  const [freqData, setFreqData] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     Promise.all([
       api.get(`/analytics/project/${id}`),
-    ]).then(([res]) => {
+      api.get(`/projects/${id}/budget-overrun`).catch(() => ({ data: { data: null } })),
+      api.get(`/projects/${id}/data-frequency`).catch(() => ({ data: { data: null } })),
+    ]).then(([res, overrunRes, freqRes]) => {
       setAnalytics(res.data.data);
+      setOverrunData(overrunRes.data.data);
+      setFreqData(freqRes.data.data);
     }).finally(() => setLoading(false));
   }, [id]);
 
   if (loading) return <div style={{ padding: 32, textAlign: 'center' }}><div className="loader" /></div>;
   if (!analytics) return null;
 
-  const { ra_progression, category_breakdown, planning, billing, variance } = analytics;
+  const { ra_progression, category_breakdown, planning, billing, variance, budget_health, expense_breakdown } = analytics;
 
   const raTrendData = (ra_progression || []).map(r => ({
     name: r.ra_code || `RA-${r.ra}`,
@@ -51,6 +66,36 @@ export default function AnalyticsPage() {
     { name: 'Not Started',  value: planning?.not_started_items || 0, color: '#64748B' },
     { name: 'Exceeded BOQ', value: planning?.exceeded_boq_items || 0, color: '#EF4444' },
   ].filter(d => d.value > 0);
+
+  // Budget vs Actual chart data
+  let budgetActualData = [];
+  if (budget_health) {
+    const pBudget = parseFloat(budget_health.planned_budget) || 0;
+    const aCost = parseFloat(budget_health.total_expenses) || 0;
+    const rev = parseFloat(budget_health.total_received) || 0;
+    const prof = parseFloat(budget_health.planned_profit) || 0;
+
+    const costPct = pBudget > 0 ? ((aCost / pBudget) * 100).toFixed(1) + '% Used' : '';
+    const revPct = pBudget > 0 ? ((rev / pBudget) * 100).toFixed(1) + '% Received' : '';
+    const profPct = pBudget > 0 ? ((prof / pBudget) * 100).toFixed(1) + '% Margin' : '';
+    
+    budgetActualData = [
+      { name: 'Planned Budget',   value: pBudget, fill: '#4E79A7', progressText: '' },
+      { name: 'Actual Cost',      value: aCost,   fill: aCost > pBudget ? '#E15759' : '#59A14F', progressText: costPct },
+      { name: 'Revenue Received', value: rev,     fill: '#59A14F', progressText: revPct },
+      { name: 'Planned Profit',   value: prof,    fill: '#B07AA1', progressText: profPct },
+    ];
+  }
+
+  // Expense type pie data
+  const expenseTypeData = Object.entries(expense_breakdown || {}).map(([type, data]) => ({
+    type: type.charAt(0).toUpperCase() + type.slice(1),
+    amount: data.amount || 0,
+    count: data.count || 0,
+  })).filter(d => d.amount > 0);
+
+  // Top variance BOQ items from overrun data
+  const topVarianceItems = (overrunData?.overrun_items || []).slice(0, 10);
 
   return (
     <div className="fade-in">
@@ -82,54 +127,100 @@ export default function AnalyticsPage() {
         </div>
       </div>
 
-      {/* RA Trend Chart */}
-      <div className="section-card">
-        <div className="section-title mb-16"><BarChart3 /> RA Bill Trend — Cumulative vs Received</div>
-        {raTrendData.length > 0 ? (
-          <div className="chart-container">
+      {/* Budget vs Actual vs Revenue Chart */}
+      {budgetActualData.length > 0 && (
+        <div className="section-card" style={{ marginBottom: 16 }}>
+          <div className="section-title mb-16"><Wallet /> Budget vs Actual Cost vs Revenue</div>
+          <DataFreshnessIndicator
+            lastUpdatedAt={freqData?.module_summary?.ra_bill?.last_updated}
+            lastEventType={freqData?.module_summary?.ra_bill?.last_event}
+            updatedBy={freqData?.last_updated_by}
+            eventCount={(freqData?.module_summary?.ra_bill?.count || 0) + (freqData?.module_summary?.expenses?.count || 0)}
+            module="Budget & Revenue"
+            events={(freqData?.events || []).filter(e => ['ra_bill', 'expenses', 'boq'].includes(e.affected_module))}
+            loaded={freqData !== null}
+          />
+          <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 8 }}>Data combines BOQ entries, expenses, and RA Bills</div>
+          <div style={{ height: 300 }}>
             <ResponsiveContainer>
-              <BarChart data={raTrendData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1E1E2E" vertical={false} />
-                <XAxis dataKey="name" tick={{ fill: '#94A3B8', fontSize: 12 }} axisLine={{ stroke: '#1E1E2E' }} tickLine={false} />
-                <YAxis tickFormatter={v => fmt(v)} tick={{ fill: '#94A3B8', fontSize: 11 }} axisLine={false} tickLine={false} />
+              <BarChart data={budgetActualData} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" stroke="#1E1E2E" horizontal={false} />
+                <XAxis type="number" tickFormatter={v => fmt(v)} tick={{ fill: '#94A3B8', fontSize: 10 }} axisLine={false} tickLine={false} />
+                <YAxis dataKey="name" type="category" width={130} tick={{ fill: '#94A3B8', fontSize: 12 }} axisLine={false} tickLine={false} />
                 <Tooltip {...TooltipStyle} formatter={v => fmtFull(v)} />
-                <Legend wrapperStyle={{ fontSize: 12, color: '#94A3B8' }} />
-                <Bar dataKey="Basic"    fill="#F59E0B" radius={[4,4,0,0]} name="Cumulative Basic" />
-                <Bar dataKey="Payable"  fill="#8B5CF6" radius={[4,4,0,0]} name="Net Payable" />
-                <Bar dataKey="Received" fill="#10B981" radius={[4,4,0,0]} name="Received" />
+                <Bar dataKey="value" radius={[0, 6, 6, 0]}>
+                  {budgetActualData.map((entry, index) => (
+                    <Cell key={index} fill={entry.fill} />
+                  ))}
+                  <LabelList 
+                    dataKey="progressText" 
+                    position="insideRight" 
+                    fill="#FFFFFF" 
+                    style={{ fontSize: 13, fontWeight: 700, fontFamily: 'Rajdhani, sans-serif', textShadow: '0px 1px 3px rgba(0,0,0,0.8)' }}
+                  />
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
-        ) : <div className="empty-state"><BarChart3 /><h3>No RA Bills data</h3></div>}
-      </div>
+        </div>
+      )}
 
-      {/* Category Breakdown + BOQ Donut */}
-      <div className="grid-2">
-        {/* Category Bar Chart */}
+      {/* Expense Breakdown + BOQ Status */}
+      <div className="grid-2" style={{ marginBottom: 16 }}>
+        {/* Expense Type Donut */}
         <div className="section-card">
-          <div className="section-title mb-16"><Activity /> BOQ by Category (Planned vs Executed)</div>
-          {catData.length > 0 ? (
-            <div style={{ height: 260 }}>
-              <ResponsiveContainer>
-                <BarChart data={catData} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1E1E2E" horizontal={false} />
-                  <XAxis type="number" tickFormatter={v => fmt(v)} tick={{ fill: '#94A3B8', fontSize: 10 }} axisLine={false} tickLine={false} />
-                  <YAxis type="category" dataKey="name" tick={{ fill: '#94A3B8', fontSize: 11 }} axisLine={false} tickLine={false} width={80} />
-                  <Tooltip {...TooltipStyle} formatter={v => fmtFull(v)} />
-                  <Legend wrapperStyle={{ fontSize: 11, color: '#94A3B8' }} />
-                  <Bar dataKey="Planned"  fill="#3B82F6" radius={[0,4,4,0]} name="Planned" />
-                  <Bar dataKey="Executed" fill="#F59E0B" radius={[0,4,4,0]} name="Executed" />
-                </BarChart>
+          <div className="section-title mb-16"><Activity /> Expense Breakdown by Type</div>
+          <DataFreshnessIndicator
+            lastUpdatedAt={freqData?.module_summary?.expenses?.last_updated}
+            lastEventType={freqData?.module_summary?.expenses?.last_event}
+            updatedBy={freqData?.last_updated_by}
+            eventCount={freqData?.module_summary?.expenses?.count || 0}
+            module="Expenses"
+            events={(freqData?.events || []).filter(e => e.affected_module === 'expenses')}
+            loaded={freqData !== null}
+          />
+          {expenseTypeData.length > 0 ? (
+            <div style={{ height: 280, display: 'flex', alignItems: 'center', gap: 24 }}>
+              <ResponsiveContainer width={180} height="100%">
+                <PieChart>
+                  <Pie data={expenseTypeData} cx="50%" cy="50%" innerRadius={50} outerRadius={85} paddingAngle={4} dataKey="amount" nameKey="type">
+                    {expenseTypeData.map((entry, index) => (
+                      <Cell key={index} fill={EXPENSE_TYPE_COLORS[entry.type.toLowerCase()] || '#64748B'} stroke="none" />
+                    ))}
+                  </Pie>
+                  <Tooltip {...TooltipStyle} formatter={v => [fmtFull(v), 'Amount']} />
+                </PieChart>
               </ResponsiveContainer>
+              <div style={{ flex: 1 }}>
+                {expenseTypeData.map((d, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ width: 10, height: 10, borderRadius: '50%', background: EXPENSE_TYPE_COLORS[d.type.toLowerCase()] || '#64748B' }} />
+                      <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{d.type}</span>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>({d.count})</span>
+                    </div>
+                    <span style={{ fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'Rajdhani,sans-serif' }}>{fmtFull(d.amount)}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-          ) : <div className="empty-state" style={{ padding: 24 }}><Activity /><h3>No category data</h3></div>}
+          ) : <div className="empty-state" style={{ padding: 24 }}><Activity /><h3>No expense data</h3></div>}
         </div>
 
         {/* BOQ Status Donut */}
         <div className="section-card">
           <div className="section-title mb-16"><TrendingUp /> BOQ Item Status Distribution</div>
+          <DataFreshnessIndicator
+            lastUpdatedAt={freqData?.module_summary?.boq?.last_updated}
+            lastEventType={freqData?.module_summary?.boq?.last_event}
+            updatedBy={freqData?.last_updated_by}
+            eventCount={freqData?.module_summary?.boq?.count || 0}
+            module="BOQ"
+            events={(freqData?.events || []).filter(e => e.affected_module === 'boq')}
+            loaded={freqData !== null}
+          />
           {boqStatusData.length > 0 ? (
-            <div style={{ height: 260, display: 'flex', alignItems: 'center', gap: 24 }}>
+            <div style={{ height: 280, display: 'flex', alignItems: 'center', gap: 24 }}>
               <ResponsiveContainer width={180} height="100%">
                 <PieChart>
                   <Pie data={boqStatusData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="value">
@@ -153,6 +244,86 @@ export default function AnalyticsPage() {
           ) : <div className="empty-state" style={{ padding: 24 }}><TrendingUp /><h3>No data</h3></div>}
         </div>
       </div>
+
+      {/* RA Trend Chart */}
+      <div className="section-card" style={{ marginBottom: 16 }}>
+        <div className="section-title mb-16"><BarChart3 /> RA Bill Trend — Cumulative vs Received</div>
+        <DataFreshnessIndicator
+          lastUpdatedAt={freqData?.module_summary?.ra_bill?.last_updated}
+          lastEventType={freqData?.module_summary?.ra_bill?.last_event}
+          updatedBy={freqData?.last_updated_by}
+          eventCount={freqData?.module_summary?.ra_bill?.count || 0}
+          module="RA Bills"
+          events={(freqData?.events || []).filter(e => e.affected_module === 'ra_bill')}
+          loaded={freqData !== null}
+        />
+        {raTrendData.length > 0 ? (
+          <div className="chart-container">
+            <ResponsiveContainer>
+              <BarChart data={raTrendData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1E1E2E" vertical={false} />
+                <XAxis dataKey="name" tick={{ fill: '#94A3B8', fontSize: 12 }} axisLine={{ stroke: '#1E1E2E' }} tickLine={false} />
+                <YAxis tickFormatter={v => fmt(v)} tick={{ fill: '#94A3B8', fontSize: 11 }} axisLine={false} tickLine={false} />
+                <Tooltip {...TooltipStyle} formatter={v => fmtFull(v)} />
+                <Legend wrapperStyle={{ fontSize: 12, color: '#94A3B8' }} />
+                <Bar dataKey="Basic"    fill="#F59E0B" radius={[4,4,0,0]} name="Cumulative Basic" />
+                <Bar dataKey="Payable"  fill="#8B5CF6" radius={[4,4,0,0]} name="Net Payable" />
+                <Bar dataKey="Received" fill="#10B981" radius={[4,4,0,0]} name="Received" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        ) : <div className="empty-state"><BarChart3 /><h3>No RA Bills data</h3></div>}
+      </div>
+
+      {/* Category Breakdown Chart */}
+      {catData.length > 0 && (
+        <div className="section-card" style={{ marginBottom: 16 }}>
+          <div className="section-title mb-16"><Activity /> BOQ by Category (Planned vs Executed)</div>
+          <div style={{ height: 300 }}>
+            <ResponsiveContainer>
+              <BarChart data={catData} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" stroke="#1E1E2E" horizontal={false} />
+                <XAxis type="number" tickFormatter={v => fmt(v)} tick={{ fill: '#94A3B8', fontSize: 10 }} axisLine={false} tickLine={false} />
+                <YAxis type="category" dataKey="name" tick={{ fill: '#94A3B8', fontSize: 11 }} axisLine={false} tickLine={false} width={80} />
+                <Tooltip {...TooltipStyle} formatter={v => fmtFull(v)} />
+                <Legend wrapperStyle={{ fontSize: 11, color: '#94A3B8' }} />
+                <Bar dataKey="Planned"  fill="#3B82F6" radius={[0,4,4,0]} name="Planned" />
+                <Bar dataKey="Executed" fill="#F59E0B" radius={[0,4,4,0]} name="Executed" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
+      {/* Budget Overrun Alerts */}
+      {overrunData?.overrun_items?.length > 0 && (
+        <div className="section-card">
+          <div className="section-title mb-16">
+            <AlertTriangle /> Budget Overrun Alerts
+            <span className="badge badge-red" style={{ marginLeft: 8 }}>{overrunData.overrun_boq_count} items</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {overrunData.overrun_items.map(item => (
+              <div key={item.boq_id} className={`overrun-alert overrun-${item.alert_level}`}>
+                <div className="overrun-alert-header">
+                  <span className={`overrun-badge ${item.alert_level}`}>{item.alert_level.toUpperCase()}</span>
+                  <strong>{item.item_code} — {item.description}</strong>
+                </div>
+                <div className="overrun-alert-body">
+                  <span>Planned: {fmtFull(item.planned_amount)}</span>
+                  <span>Actual: {fmtFull(item.actual_cost)}</span>
+                  <span style={{ color: 'var(--red)', fontWeight: 600 }}>
+                    Overrun: {fmtFull(Math.abs(item.variance))} ({item.overrun_percent}%)
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 12, fontSize: 13, color: 'var(--text-muted)' }}>
+            Total overrun: <strong style={{ color: 'var(--red)' }}>{fmtFull(overrunData.total_overrun_amount)}</strong> across {overrunData.overrun_boq_count} of {overrunData.total_boq_count} BOQ items
+          </div>
+        </div>
+      )}
     </div>
   );
 }

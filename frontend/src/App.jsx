@@ -21,9 +21,12 @@ import CreateProject     from './pages/CreateProject';
 import EditProject       from './pages/EditProject';
 import ExpensesPage      from './pages/ExpensesPage';
 import CreateRABill      from './pages/CreateRABill';
+import ProjectHistoryPage from './pages/ProjectHistoryPage';
+import TimeAnalyticsPage  from './pages/TimeAnalyticsPage';
 
 // Layout
 import Sidebar from './components/Sidebar';
+import TopBar from './components/TopBar';
 
 // ── Auth Context ──────────────────────────────────────────────
 export const AuthContext = createContext(null);
@@ -37,6 +40,7 @@ function AppLayout({ children }) {
     <div className="app-layout">
       <Sidebar />
       <main className="main-content fade-in">
+        <TopBar />
         {children}
       </main>
     </div>
@@ -84,10 +88,12 @@ export default function App() {
           <Route path="/projects/:id/ra-bills" element={<ProtectedRoute><RABillsList /></ProtectedRoute>} />
           <Route path="/projects/:id/ra-bills/new" element={<ProtectedRoute><CreateRABill /></ProtectedRoute>} />
           <Route path="/projects/:id/ra-bills/:raId" element={<ProtectedRoute><RABillDetail /></ProtectedRoute>} />
+          <Route path="/projects/:id/analytics/time" element={<ProtectedRoute><TimeAnalyticsPage /></ProtectedRoute>} />
           <Route path="/projects/:id/analytics" element={<ProtectedRoute><AnalyticsPage /></ProtectedRoute>} />
           <Route path="/projects/:id/cashflow" element={<ProtectedRoute><CashFlowPage /></ProtectedRoute>} />
           <Route path="/projects/:id/investors" element={<ProtectedRoute><InvestorPage /></ProtectedRoute>} />
           <Route path="/projects/:id/expenses" element={<ProtectedRoute><ExpensesPage /></ProtectedRoute>} />
+          <Route path="/projects/:id/history" element={<ProtectedRoute><ProjectHistoryPage /></ProtectedRoute>} />
           <Route path="/import" element={<ProtectedRoute><ImportPage /></ProtectedRoute>} />
           <Route path="/organizations" element={<ProtectedRoute><OrganizationsPage /></ProtectedRoute>} />
           <Route path="/admin" element={<ProtectedRoute><AdminPanel /></ProtectedRoute>} />

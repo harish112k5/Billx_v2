@@ -34,6 +34,9 @@ const investorRoutes      = require('./routes/investors');
 const expenseRoutes       = require('./routes/expenses');
 const adminRoutes         = require('./routes/admin');
 const budgetRoutes        = require('./routes/budget');
+const dataFrequencyRoutes = require('./routes/dataFrequency');
+const boqScheduleRoutes   = require('./routes/boqSchedules');
+const templateRoutes      = require('./routes/templates');
 
 app.use('/api/auth',          authRoutes);
 app.use('/api/organizations', organizationRoutes);
@@ -48,7 +51,11 @@ app.use('/api/import',        importRoutes);
 app.use('/api/investors',     investorRoutes);
 app.use('/api/projects',      investorRoutes);
 app.use('/api/projects',      expenseRoutes);
+app.use('/api/projects',      dataFrequencyRoutes);
+app.use('/api/projects',      boqScheduleRoutes);
+app.use('/api/boq-schedules', boqScheduleRoutes);
 app.use('/api/admin',         adminRoutes);
+app.use('/api',               templateRoutes);
 
 // ── Health check ─────────────────────────────────────────────
 app.get('/api/health', (req, res) => {

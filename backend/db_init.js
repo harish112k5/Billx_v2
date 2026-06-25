@@ -7,9 +7,13 @@
  */
 
 const db = require('./db');
+const runMigrations = require('./db_migrate_v2');
 
 async function initDatabase() {
   console.log('🔧 Running DB init checks...');
+
+  // Run V2 schema migrations first (idempotent)
+  await runMigrations();
 
   try {
     // ─────────────────────────────────────────
@@ -51,23 +55,43 @@ async function initDatabase() {
     // ─────────────────────────────────────────
     await db.execute(`
       CREATE OR REPLACE VIEW \`v_project_financial_summary\` AS
-      SELECT
-        p.project_id, p.project_name, p.project_code,
-        p.contract_value, p.status,
-        COALESCE(SUM(DISTINCT r.basic_amount_upto_date), 0) AS total_certified_basic,
-        COALESCE(SUM(DISTINCT r.gross_amount), 0)           AS total_gross_amount,
-        COALESCE(SUM(DISTINCT r.net_payable), 0)            AS total_net_payable,
-        COALESCE(SUM(DISTINCT r.payment_received), 0)       AS total_received,
-        COALESCE(SUM(DISTINCT r.retention_amount), 0)       AS total_retention,
-        COALESCE(SUM(e.amount), 0)                          AS total_expenses,
-        COALESCE(SUM(i.amount), 0)                          AS total_invested,
-        COALESCE(SUM(DISTINCT r.payment_received), 0) - COALESCE(SUM(e.amount), 0) AS net_position,
-        COUNT(DISTINCT r.ra_bill_id)                        AS total_ra_bills
+      SELECT 
+        p.project_id,
+        p.project_name,
+        p.project_code,
+        p.contract_value,
+        p.status,
+        COALESCE(r.total_certified_basic, 0) AS total_certified_basic,
+        COALESCE(r.total_gross_amount, 0) AS total_gross_amount,
+        COALESCE(r.total_net_payable, 0) AS total_net_payable,
+        COALESCE(r.total_received, 0) AS total_received,
+        COALESCE(r.total_retention, 0) AS total_retention,
+        COALESCE(e.total_expenses, 0) AS total_expenses,
+        COALESCE(i.total_invested, 0) AS total_invested,
+        COALESCE(r.total_received, 0) - COALESCE(e.total_expenses, 0) AS net_position,
+        COALESCE(r.total_ra_bills, 0) AS total_ra_bills
       FROM projects p
-      LEFT JOIN ra_bills         r ON r.project_id = p.project_id
-      LEFT JOIN project_expenses e ON e.project_id = p.project_id
-      LEFT JOIN investments      i ON i.project_id = p.project_id
-      GROUP BY p.project_id, p.project_name, p.project_code, p.contract_value, p.status
+      LEFT JOIN (
+          SELECT project_id, 
+                 SUM(basic_amount_upto_date) AS total_certified_basic,
+                 SUM(gross_amount) AS total_gross_amount,
+                 SUM(net_payable) AS total_net_payable,
+                 SUM(payment_received) AS total_received,
+                 SUM(retention_amount) AS total_retention,
+                 COUNT(ra_bill_id) AS total_ra_bills
+          FROM ra_bills 
+          GROUP BY project_id
+      ) r ON r.project_id = p.project_id
+      LEFT JOIN (
+          SELECT project_id, SUM(amount) AS total_expenses
+          FROM project_expenses 
+          GROUP BY project_id
+      ) e ON e.project_id = p.project_id
+      LEFT JOIN (
+          SELECT project_id, SUM(amount) AS total_invested
+          FROM investments 
+          GROUP BY project_id
+      ) i ON i.project_id = p.project_id;
     `);
     console.log('  ✅ v_project_financial_summary OK');
 
@@ -103,11 +127,16 @@ async function initDatabase() {
       SELECT
         pb.project_id,
         pb.budget_id,
+        pb.status AS budget_status,
+        bi.budget_item_id,
         bi.category,
-        SUM(bi.budgeted_amount)   AS total_budgeted,
-        SUM(bi.actual_amount)     AS total_actual,
-        SUM(bi.variance_amount)   AS total_variance,
-        COALESCE(pe.spent, 0)     AS total_expenses_recorded
+        bi.task_name,
+        bi.budgeted_amount,
+        bi.actual_amount,
+        bi.variance_amount,
+        COALESCE(pe.spent, 0)     AS total_expenses_recorded,
+        pe2.expense_type,
+        COALESCE(pe2.type_total, 0) AS expense_by_type
       FROM project_budgets pb
       JOIN budget_items bi ON bi.budget_id = pb.budget_id
       LEFT JOIN (
@@ -115,7 +144,14 @@ async function initDatabase() {
         FROM project_expenses
         GROUP BY project_id, category
       ) pe ON pe.project_id = pb.project_id AND pe.category = bi.category
-      GROUP BY pb.project_id, pb.budget_id, bi.category, pe.spent
+      LEFT JOIN (
+        SELECT project_id, expense_type, SUM(amount) AS type_total
+        FROM project_expenses
+        GROUP BY project_id, expense_type
+      ) pe2 ON pe2.project_id = pb.project_id
+      GROUP BY pb.project_id, pb.budget_id, pb.status, bi.budget_item_id,
+               bi.category, bi.task_name, bi.budgeted_amount, bi.actual_amount,
+               bi.variance_amount, pe.spent, pe2.expense_type, pe2.type_total
     `);
     console.log('  ✅ v_budget_vs_actual OK');
 

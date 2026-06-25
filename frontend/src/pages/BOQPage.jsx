@@ -2,8 +2,13 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import BOQTable from '../components/BOQTable';
-import { fmtFull, fmtNum } from '../components/KPICard';
-import { Search, X, Filter, Activity, Ruler } from 'lucide-react';
+import { fmtFull, fmtNum, fmt } from '../components/KPICard';
+import {
+  ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
+  CartesianGrid, Tooltip, Cell
+} from 'recharts';
+import { Search, X, Filter, Activity, Ruler, DollarSign, Clock } from 'lucide-react';
+import DataFreshnessIndicator from '../components/DataFreshnessIndicator';
 
 const FILTER_TABS = [
   { key: 'all',         label: 'All' },
@@ -12,6 +17,12 @@ const FILTER_TABS = [
   { key: 'Not Started', label: 'Not Started' },
   { key: 'Exceeded BOQ', label: 'Exceeded BOQ' },
 ];
+
+const TooltipStyle = {
+  contentStyle: { background: '#12121A', border: '1px solid #1E1E2E', borderRadius: 8 },
+  labelStyle: { color: '#94A3B8' },
+  itemStyle: { color: '#F1F5F9' }
+};
 
 export default function BOQPage() {
   const { id } = useParams();
@@ -23,6 +34,8 @@ export default function BOQPage() {
   const [selected, setSelected] = useState(null);
   const [measurements, setMeasurements] = useState([]);
   const [measLoading, setMeasLoading]   = useState(false);
+  const [boqExpenses, setBoqExpenses]   = useState([]);
+  const [freqData, setFreqData]         = useState(null);
 
   const [summary, setSummary] = useState(null);
 
@@ -31,9 +44,11 @@ export default function BOQPage() {
     Promise.all([
       api.get(`/projects/${id}/boq`),
       api.get(`/projects/${id}/boq/summary`),
-    ]).then(([boqRes, sumRes]) => {
+      api.get(`/projects/${id}/data-frequency`).catch(() => ({ data: { data: null } })),
+    ]).then(([boqRes, sumRes, freqRes]) => {
       setItems(boqRes.data.data || []);
       setSummary(sumRes.data.data);
+      setFreqData(freqRes.data.data);
     }).finally(() => setLoading(false));
   }, [id]);
 
@@ -49,13 +64,44 @@ export default function BOQPage() {
     setSelected(item);
     setMeasLoading(true);
     try {
-      const res = await api.get(`/projects/${id}/boq/${item.boq_id}/measurements`);
-      setMeasurements(res.data.data || []);
+      const [measRes, expRes] = await Promise.all([
+        api.get(`/projects/${id}/boq/${item.boq_id}/measurements`),
+        api.get(`/projects/${id}/expenses?boq_id=${item.boq_id}`).catch(() => ({ data: { data: [] } })),
+      ]);
+      setMeasurements(measRes.data.data || []);
+      setBoqExpenses(expRes.data.data || []);
     } catch (e) {
       setMeasurements([]);
+      setBoqExpenses([]);
     } finally {
       setMeasLoading(false);
     }
+  };
+
+  // Build chart data for selected item
+  const getChartData = () => {
+    if (!selected) return [];
+    const planned = parseFloat(selected.planned_amount) || 0;
+    const actualCost = boqExpenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+    const executedValue = parseFloat(selected.executed_amount) || 0;
+    return [
+      { name: 'Planned Budget', amount: planned, fill: '#3B82F6' },
+      { name: 'Actual Cost', amount: actualCost, fill: actualCost > planned ? '#EF4444' : '#10B981' },
+      { name: 'Executed Value', amount: executedValue, fill: '#F59E0B' },
+    ];
+  };
+
+  // Cost per unit analysis
+  const getCostPerUnit = () => {
+    if (!selected) return null;
+    const actualCost = boqExpenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+    const executedQty = parseFloat(selected.executed_quantity) || 0;
+    const plannedRate = parseFloat(selected.unit_rate) || 0;
+    if (executedQty <= 0 || actualCost <= 0) return null;
+    const actualRate = actualCost / executedQty;
+    const variance = actualRate - plannedRate;
+    const variancePct = plannedRate > 0 ? ((variance / plannedRate) * 100).toFixed(1) : 0;
+    return { actualRate, plannedRate, variance, variancePct, executedQty, actualCost };
   };
 
   return (
@@ -96,6 +142,17 @@ export default function BOQPage() {
       )}
 
       <div className="section-card">
+        {/* Data Freshness */}
+        <DataFreshnessIndicator
+          lastUpdatedAt={freqData?.module_summary?.boq?.last_updated}
+          lastEventType={freqData?.module_summary?.boq?.last_event}
+          updatedBy={freqData?.last_updated_by}
+          eventCount={freqData?.module_summary?.boq?.count || 0}
+          module="BOQ"
+          events={(freqData?.events || []).filter(e => e.affected_module === 'boq')}
+          loaded={freqData !== null}
+        />
+
         {/* Filter Tabs */}
         <div className="tab-list">
           {FILTER_TABS.map(t => (
@@ -147,12 +204,12 @@ export default function BOQPage() {
       {/* ── Measurement Detail Modal ───────────────────────── */}
       {selected && (
         <div className="modal-overlay" onClick={() => setSelected(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 900 }}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 960 }}>
             <div className="modal-header">
               <div>
                 <div className="modal-title">
                   <span className="mono" style={{ color: 'var(--amber)', marginRight: 8 }}>{selected.item_code}</span>
-                  Measurement Details
+                  Item Details
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
                   {selected.description}
@@ -180,6 +237,75 @@ export default function BOQPage() {
                 </div>
               ))}
             </div>
+
+            {/* Budget vs Actual Chart */}
+            {!measLoading && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+                {/* Bar Chart */}
+                <div style={{ background: 'var(--surface-dark)', borderRadius: 'var(--radius)', padding: 16 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <DollarSign size={14} color="var(--blue)" /> Budget vs Actual
+                  </div>
+                  {getChartData().some(d => d.amount > 0) ? (
+                    <div style={{ height: 180 }}>
+                      <ResponsiveContainer>
+                        <BarChart data={getChartData()} layout="vertical" margin={{ left: 10 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#1E1E2E" horizontal={false} />
+                          <XAxis type="number" tickFormatter={v => fmt(v)} tick={{ fill: '#94A3B8', fontSize: 10 }} axisLine={false} tickLine={false} />
+                          <YAxis dataKey="name" type="category" width={100} tick={{ fill: '#94A3B8', fontSize: 11 }} axisLine={false} tickLine={false} />
+                          <Tooltip {...TooltipStyle} formatter={v => fmtFull(v)} />
+                          <Bar dataKey="amount" radius={[0, 6, 6, 0]}>
+                            {getChartData().map((entry, index) => (
+                              <Cell key={index} fill={entry.fill} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
+                      No expense data linked to this BOQ item
+                    </div>
+                  )}
+                </div>
+
+                {/* Cost Per Unit Analysis */}
+                <div style={{ background: 'var(--surface-dark)', borderRadius: 'var(--radius)', padding: 16 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Activity size={14} color="var(--amber)" /> Cost Per Unit Analysis
+                  </div>
+                  {getCostPerUnit() ? (() => {
+                    const cpu = getCostPerUnit();
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: 'var(--surface)', borderRadius: 6 }}>
+                          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Planned Rate</span>
+                          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--blue)' }}>{fmtFull(cpu.plannedRate)}/{selected.unit}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: 'var(--surface)', borderRadius: 6 }}>
+                          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Actual Rate</span>
+                          <span style={{ fontSize: 14, fontWeight: 700, color: cpu.variance > 0 ? 'var(--red)' : 'var(--green)' }}>{fmtFull(cpu.actualRate)}/{selected.unit}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: cpu.variance > 0 ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)', borderRadius: 6 }}>
+                          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Variance</span>
+                          <span style={{ fontSize: 14, fontWeight: 700, color: cpu.variance > 0 ? 'var(--red)' : 'var(--green)' }}>
+                            {cpu.variance > 0 ? '+' : ''}{fmtFull(cpu.variance)}/{selected.unit} ({cpu.variancePct}%)
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: 'var(--surface)', borderRadius: 6 }}>
+                          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Executed Qty</span>
+                          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>{fmtNum(cpu.executedQty, 3)} {selected.unit}</span>
+                        </div>
+                      </div>
+                    );
+                  })() : (
+                    <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
+                      Cost analysis available when expenses are linked and quantity is executed
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Measurements table */}
             {measLoading ? (
@@ -223,6 +349,18 @@ export default function BOQPage() {
                 <Ruler />
                 <h3>No measurement records</h3>
                 <p>Import an RA Bill Excel to load measurement data</p>
+                {selected.item_code && (
+                  <div style={{ marginTop: 12, padding: '10px 16px', background: 'var(--surface-dark)', borderRadius: 'var(--radius)', textAlign: 'left' }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--amber)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <Clock size={12} /> Data History
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                      ⚠ No data history recorded for this item.
+                      This item was created via BOQ import but no measurement data has been entered yet.
+                      Import an RA Bill Excel file containing sheet "{selected.item_code}" to add measurements.
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

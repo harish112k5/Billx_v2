@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
+import { fmtFull } from '../components/KPICard';
 import { ArrowLeft, Plus, Pencil, Trash2, Users } from 'lucide-react';
 import OrganizationModal from '../components/OrganizationModal';
 
@@ -9,6 +10,7 @@ export default function CreateProject() {
   const [form, setForm] = useState({
     project_code: '', project_name: '', project_location: '', client_name: '',
     work_order_number: '', work_order_date: '', contract_value: '',
+    planned_profit: '', project_manager: '',
     start_date: '', end_date: '', status: 'ongoing', description: '', 
     contractor_id: ''
   });
@@ -19,13 +21,36 @@ export default function CreateProject() {
   const [editingTarget, setEditingTarget] = useState('main'); // 'main' | 'sub'
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
+  const [validationErrors, setValidationErrors] = useState([]);
 
   useEffect(() => {
     api.get('/organizations').then(res => setOrganizations(res.data.data || []));
   }, []);
 
+  // Auto-calculate planned budget
+  const contractValue = parseFloat(form.contract_value) || 0;
+  const plannedProfit = parseFloat(form.planned_profit) || 0;
+  const plannedBudget = contractValue - plannedProfit;
+
+  const validateForm = () => {
+    const errors = [];
+    if (!form.project_code) errors.push('Project code is required');
+    if (!form.project_name) errors.push('Project name is required');
+    if (plannedProfit < 0) errors.push('Planned profit cannot be negative');
+    if (plannedProfit > contractValue && contractValue > 0) {
+      errors.push('Planned profit cannot exceed contract value');
+    }
+    return errors;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const errors = validateForm();
+    if (errors.length > 0) {
+      setValidationErrors(errors);
+      return;
+    }
+    setValidationErrors([]);
     setSaving(true);
     setError('');
     try {
@@ -116,6 +141,44 @@ export default function CreateProject() {
               <label className="form-label">Project Location</label>
               <input className="form-input" value={form.project_location} onChange={set('project_location')} placeholder="BHS Bypass, Tamil Nadu" />
             </div>
+          </div>
+
+          {/* ── Financial Section ── */}
+          <div style={{ border: '1px solid var(--border-dark)', borderRadius: 'var(--radius)', padding: 16, marginBottom: 16, background: 'var(--surface-dark)' }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--green)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--green)' }} />
+              Financial Planning
+            </div>
+
+            <div className="grid-2">
+              <div className="form-group">
+                <label className="form-label">Contract Value (₹) *</label>
+                <input type="number" className="form-input" value={form.contract_value} onChange={set('contract_value')} placeholder="e.g. 100000000 for ₹10 Crore" />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Expected Profit (₹) *</label>
+                <input type="number" className="form-input" value={form.planned_profit} onChange={set('planned_profit')} placeholder="e.g. 20000000 for ₹2 Crore" min="0" />
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>Profit margin expected from this project</div>
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Planned Budget (₹) — Auto Calculated</label>
+              <input
+                type="text"
+                className="form-input"
+                value={contractValue > 0 ? fmtFull(plannedBudget) : '—'}
+                readOnly
+                style={{ background: 'var(--surface)', color: plannedBudget < 0 ? 'var(--red)' : 'var(--green)', fontWeight: 600, cursor: 'not-allowed' }}
+              />
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>Budget = Contract Value − Expected Profit</div>
+            </div>
+          </div>
+
+          {/* ── Project Manager ── */}
+          <div className="form-group">
+            <label className="form-label">Project Manager</label>
+            <input className="form-input" value={form.project_manager} onChange={set('project_manager')} placeholder="Name of project manager" />
           </div>
 
           {/* ── Main Contractor ── */}
@@ -227,22 +290,12 @@ export default function CreateProject() {
 
           <div className="grid-2">
             <div className="form-group">
-              <label className="form-label">Contract Value (₹)</label>
-              <input type="number" className="form-input" value={form.contract_value} onChange={set('contract_value')} placeholder="46329919.93" />
-            </div>
-            <div className="form-group">
               <label className="form-label">Start Date</label>
               <input type="date" className="form-input" value={form.start_date?.split('T')[0] || ''} onChange={set('start_date')} />
             </div>
-          </div>
-
-          <div className="grid-2">
             <div className="form-group">
               <label className="form-label">End Date</label>
               <input type="date" className="form-input" value={form.end_date?.split('T')[0] || ''} onChange={set('end_date')} />
-            </div>
-            <div className="form-group">
-              {/* Empty space */}
             </div>
           </div>
 
@@ -250,6 +303,12 @@ export default function CreateProject() {
             <label className="form-label">Description</label>
             <textarea className="form-textarea" value={form.description} onChange={set('description')} placeholder="Brief project description..." />
           </div>
+
+          {validationErrors.length > 0 && (
+            <div style={{ padding: '10px 14px', background: 'var(--red-glow)', color: 'var(--red)', borderRadius: 'var(--radius)', marginBottom: 16, fontSize: 13 }}>
+              {validationErrors.map((e, i) => <div key={i}>• {e}</div>)}
+            </div>
+          )}
 
           {error && (
             <div style={{ padding: '10px 14px', background: 'var(--red-glow)', color: 'var(--red)', borderRadius: 'var(--radius)', marginBottom: 16, fontSize: 13 }}>
