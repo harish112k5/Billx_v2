@@ -11,7 +11,7 @@ export default function SCurveChart({ data }) {
   }
 
   const chartData = data.map(d => ({
-    month: new Date(d.period_start).toLocaleDateString('en-IN', { month: 'short', year: '2-digit' }),
+    date: new Date(d.period_start).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' }),
     'Planned Value': d.cumulative_pv || 0,
     'Earned Value': d.cumulative_ev || 0,
     'Actual Cost': d.cumulative_ac || 0,
@@ -29,7 +29,7 @@ export default function SCurveChart({ data }) {
     <ResponsiveContainer width="100%" height={400}>
       <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="var(--border-dark)" />
-        <XAxis dataKey="month" stroke="var(--text-muted)" fontSize={12} />
+        <XAxis dataKey="date" stroke="var(--text-muted)" fontSize={12} />
         <YAxis yAxisId="left" stroke="var(--text-muted)" fontSize={12} tickFormatter={formatCurrency} />
         <YAxis yAxisId="right" orientation="right" stroke="var(--text-muted)" fontSize={12} tickFormatter={v => `${v}%`} />
         <Tooltip

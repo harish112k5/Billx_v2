@@ -251,6 +251,22 @@ async function runRABillImport({ project_id, contract_id, file_path, import_id, 
     try {
       const XLSX = require('xlsx');
       const workbook = XLSX.readFile(file_path, { cellDates: true, raw: false, dateNF: 'yyyy-mm-dd' });
+      
+      // Update BOQ dates if V2 template
+      try {
+        const boqItemsV2 = excelParser.parseBOQSheetV2(workbook);
+        for (const item of boqItemsV2) {
+            if (item.plannedStart && item.plannedEnd) {
+                await conn.execute(
+                    `UPDATE boq_items SET planned_start_date=?, planned_end_date=? WHERE project_id=? AND item_code=?`,
+                    [item.plannedStart, item.plannedEnd, project_id, item.itemCode]
+                );
+            }
+        }
+      } catch (e) {
+        console.log('Not a V2 BOQ sheet or missing date columns', e.message);
+      }
+
       const scheduleData = excelParser.parseScheduleSheet(workbook);
 
       if (scheduleData && scheduleData.length > 0) {
@@ -262,15 +278,15 @@ async function runRABillImport({ project_id, contract_id, file_path, import_id, 
         const boqMap = new Map(boqItems.map(b => [b.item_code, b.boq_id]));
 
         const schedules = scheduleData.map(s => ({
-          boq_id: boqMap.get(s.item_code),
-          period_start: s.period_start,
-          period_end: s.period_end,
-          planned_quantity: s.planned_quantity,
-          planned_amount: s.planned_amount
+          boq_id: boqMap.get(s.itemCode || s.item_code),
+          period_start: s.periodStart || s.period_start,
+          period_end: s.periodEnd || s.period_end,
+          planned_quantity: s.plannedQuantity || s.planned_quantity,
+          planned_amount: s.plannedAmount || s.planned_amount
         })).filter(s => s.boq_id);
 
         if (schedules.length > 0) {
-          await scheduleEngine.bulkUpsertSchedules(project_id, schedules);
+          await scheduleEngine.bulkUpsertSchedules(project_id, schedules, conn);
         }
       } else {
         // No Schedule sheet — auto-generate default schedule
@@ -279,7 +295,7 @@ async function runRABillImport({ project_id, contract_id, file_path, import_id, 
           [project_id]
         );
         if (hasSchedule[0].count === 0) {
-          await scheduleEngine.generateDefaultSchedule(project_id);
+          await scheduleEngine.generateDefaultSchedule(project_id, conn);
         }
       }
     } catch (schedErr) {

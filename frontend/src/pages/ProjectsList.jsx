@@ -17,7 +17,13 @@ export default function ProjectsList() {
   const [viewMode, setViewMode] = useState('list');
 
   useEffect(() => {
-    api.get('/projects').then(r => setProjects(r.data.data || [])).finally(() => setLoading(false));
+    api.get('/projects')
+      .then(r => setProjects(r.data.data || []))
+      .catch(e => {
+        console.error('Failed to fetch projects:', e);
+        setProjects([]);
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   // Filtering Logic

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import { fmtFull } from '../components/KPICard';
 import { Upload, CheckCircle, AlertTriangle, ChevronRight, FileSpreadsheet, X, ListChecks } from 'lucide-react';
+import TemplateDownloads from '../components/TemplateDownloads';
 
 const STEPS = ['Select Project', 'Upload File', 'Review & Confirm'];
 
@@ -146,24 +147,13 @@ export default function ImportPage() {
                 <FileSpreadsheet size={14} /> Project Budget
               </button>
             </div>
-            {importType === 'budget' && (
-              <div style={{ marginTop: 12, textAlign: 'right' }}>
-                <a href="/budget_template.xlsx" download className="btn btn-ghost btn-sm" style={{ color: 'var(--blue)', display: 'inline-flex', alignItems: 'center' }}>
-                  <FileSpreadsheet size={14} style={{ marginRight: 6 }} /> Download Budget Template
-                </a>
-              </div>
-            )}
-            {importType === 'rabill' && (
-              <div style={{ marginTop: 12, textAlign: 'right' }}>
-                <a href="/rabill_template.xlsx" download className="btn btn-ghost btn-sm" style={{ color: 'var(--blue)', display: 'inline-flex', alignItems: 'center' }}>
-                  <FileSpreadsheet size={14} style={{ marginRight: 6 }} /> Download RA Bill / BOQ Template
-                </a>
-              </div>
-            )}
-          </div>
+            
+            <div style={{ marginTop: 20 }}>
+              <TemplateDownloads />
+            </div>
 
-          <div className="form-group">
-            <label className="form-label">Project</label>
+            <div style={{ height: 16 }} />
+            <label className="form-label">Select Project *</label>
             <select className="form-select" value={form.project_id} onChange={e => setForm(f => ({ ...f, project_id: e.target.value }))}>
               <option value="">Select project...</option>
               {projects.map(p => <option key={p.project_id} value={p.project_id}>{p.project_code} — {p.project_name}</option>)}

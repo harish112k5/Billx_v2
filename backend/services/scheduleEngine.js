@@ -9,8 +9,8 @@ const { v4: uuidv4 } = require('uuid');
 const scheduleEngine = {
 
   // ── Generate default monthly schedule from project dates + BOQ data ──
-  async generateDefaultSchedule(projectId) {
-    const [project] = await db.query(
+  async generateDefaultSchedule(projectId, conn = db) {
+    const [project] = await conn.query(
       `SELECT start_date, end_date FROM projects WHERE project_id = ?`, [projectId]
     );
     if (!project.length) throw new Error('Project not found');
@@ -21,7 +21,7 @@ const scheduleEngine = {
     const start = new Date(project[0].start_date);
     const end = new Date(project[0].end_date);
 
-    const [boqItems] = await db.query(
+    const [boqItems] = await conn.query(
       `SELECT boq_id, planned_quantity, unit_rate FROM boq_items WHERE project_id = ?`,
       [projectId]
     );
@@ -50,7 +50,7 @@ const scheduleEngine = {
         const periodEnd = new Date(current.getFullYear(), current.getMonth() + 1, 0);
 
         try {
-          await db.query(
+          await conn.query(
             `INSERT IGNORE INTO boq_item_schedules 
              (schedule_id, boq_id, project_id, period_start, period_end, planned_quantity, planned_amount)
              VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -72,26 +72,28 @@ const scheduleEngine = {
   },
 
   // ── Bulk upsert schedules from Excel import or frontend ──
-  async bulkUpsertSchedules(projectId, schedules) {
+  async bulkUpsertSchedules(projectId, schedules, conn = db) {
     const results = [];
     for (const sched of schedules) {
-      const [existing] = await db.query(
+      if (!sched.boq_id) continue;
+      
+      const [existing] = await conn.query(
         `SELECT schedule_id FROM boq_item_schedules 
-         WHERE boq_id = ? AND period_start = ?`,
-        [sched.boq_id, sched.period_start]
+         WHERE boq_id = ? AND period_start = ? AND period_end = ?`,
+        [sched.boq_id, sched.period_start, sched.period_end]
       );
 
       if (existing.length > 0) {
-        await db.query(
+        await conn.query(
           `UPDATE boq_item_schedules 
-           SET planned_quantity = ?, planned_amount = ?, updated_at = NOW()
+           SET planned_quantity = ?, planned_amount = ? 
            WHERE schedule_id = ?`,
           [sched.planned_quantity, sched.planned_amount, existing[0].schedule_id]
         );
         results.push({ action: 'updated', schedule_id: existing[0].schedule_id });
       } else {
         const id = uuidv4();
-        await db.query(
+        await conn.query(
           `INSERT INTO boq_item_schedules 
            (schedule_id, boq_id, project_id, period_start, period_end, planned_quantity, planned_amount)
            VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -140,62 +142,96 @@ const scheduleEngine = {
       params.push(asOfDate);
     }
 
-    const [rows] = await db.query(`
+    const [schedRows] = await db.query(`
       SELECT 
-        s.period_start,
-        s.period_end,
+        DATE(s.period_start) as period_start,
+        MAX(s.period_end) as period_end,
         SUM(s.planned_amount) as planned_value,
         SUM(s.actual_amount) as earned_value,
         SUM(s.planned_quantity) as planned_qty,
         SUM(s.actual_quantity) as actual_qty
       FROM boq_item_schedules s
       WHERE s.project_id = ? ${cutoff}
-      GROUP BY s.period_start, s.period_end
-      ORDER BY s.period_start
+      GROUP BY DATE(s.period_start)
     `, params);
 
-    // Get actual costs from expenses
-    const [expenses] = await db.query(`
+    // Get actual costs from expenses exact date
+    const [expenseRows] = await db.query(`
       SELECT 
-        DATE_FORMAT(expense_date, '%Y-%m-01') as period_start,
+        DATE(expense_date) as period_start,
         SUM(amount) as actual_cost
       FROM project_expenses
       WHERE project_id = ?
-      GROUP BY DATE_FORMAT(expense_date, '%Y-%m-01')
-      ORDER BY period_start
+      GROUP BY DATE(expense_date)
     `, [projectId]);
 
-    // Build cumulative values
+    const dateMap = new Map();
+
+    const addDate = (dateStr) => {
+      if (!dateMap.has(dateStr)) {
+        dateMap.set(dateStr, {
+          period_start: dateStr,
+          planned_value: 0,
+          earned_value: 0,
+          actual_cost: 0,
+          planned_qty: 0,
+          actual_qty: 0,
+          period_end: dateStr
+        });
+      }
+      return dateMap.get(dateStr);
+    };
+
+    schedRows.forEach(row => {
+      const dStr = typeof row.period_start === 'string' ? row.period_start : row.period_start.toISOString().split('T')[0];
+      const entry = addDate(dStr);
+      entry.planned_value += parseFloat(row.planned_value) || 0;
+      entry.earned_value += parseFloat(row.earned_value) || 0;
+      entry.planned_qty += parseFloat(row.planned_qty) || 0;
+      entry.actual_qty += parseFloat(row.actual_qty) || 0;
+      entry.period_end = row.period_end;
+    });
+
+    expenseRows.forEach(row => {
+      const dStr = typeof row.period_start === 'string' ? row.period_start : row.period_start.toISOString().split('T')[0];
+      const entry = addDate(dStr);
+      entry.actual_cost += parseFloat(row.actual_cost) || 0;
+    });
+
+    const [proj] = await db.query(`SELECT end_date FROM projects WHERE project_id = ?`, [projectId]);
+    const endDate = proj[0]?.end_date;
+    if (endDate) {
+      const endStr = typeof endDate === 'string' ? endDate : endDate.toISOString().split('T')[0];
+      addDate(endStr);
+    }
+
+    const sortedDates = Array.from(dateMap.keys()).sort();
+
     let cumulativePV = 0, cumulativeEV = 0, cumulativeAC = 0;
+    const timeline = [];
 
-    return rows.map(row => {
-      const periodStr = typeof row.period_start === 'string'
-        ? row.period_start
-        : row.period_start.toISOString().split('T')[0];
+    for (const dStr of sortedDates) {
+      const entry = dateMap.get(dStr);
+      cumulativePV += entry.planned_value;
+      cumulativeEV += entry.earned_value;
+      cumulativeAC += entry.actual_cost;
 
-      const expenseRow = expenses.find(e => e.period_start === periodStr);
-      const periodAC = expenseRow ? parseFloat(expenseRow.actual_cost) : 0;
-
-      cumulativePV += parseFloat(row.planned_value) || 0;
-      cumulativeEV += parseFloat(row.earned_value) || 0;
-      cumulativeAC += periodAC;
-
-      return {
-        period_start: periodStr,
-        period_end: row.period_end,
-        planned_value: parseFloat(row.planned_value) || 0,
-        earned_value: parseFloat(row.earned_value) || 0,
-        actual_cost: periodAC,
+      timeline.push({
+        period_start: entry.period_start,
+        period_end: entry.period_end,
+        planned_value: entry.planned_value,
+        earned_value: entry.earned_value,
+        actual_cost: entry.actual_cost,
         cumulative_pv: cumulativePV,
         cumulative_ev: cumulativeEV,
         cumulative_ac: cumulativeAC,
-        planned_qty: parseFloat(row.planned_qty) || 0,
-        actual_qty: parseFloat(row.actual_qty) || 0,
-        completion_pct: row.planned_qty > 0
-          ? ((parseFloat(row.actual_qty) || 0) / parseFloat(row.planned_qty) * 100).toFixed(2)
-          : 0
-      };
-    });
+        planned_qty: entry.planned_qty,
+        actual_qty: entry.actual_qty,
+        completion_pct: entry.planned_qty > 0 ? (entry.actual_qty / entry.planned_qty * 100).toFixed(2) : 0
+      });
+    }
+
+    return timeline;
   },
 
   // ── Calculate EVM metrics ──

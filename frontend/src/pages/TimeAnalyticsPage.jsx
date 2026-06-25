@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Calendar, RefreshCw, ArrowLeft, Clock, TrendingUp } from 'lucide-react';
+import { Calendar, RefreshCw, ArrowLeft, Clock, TrendingUp, CheckCircle } from 'lucide-react';
 import api from '../api/axios';
 import SCurveChart from '../components/SCurveChart';
 import EVMDashboard from '../components/EVMDashboard';
 import TimePhaseTable from '../components/TimePhaseTable';
 import BurnRateChart from '../components/BurnRateChart';
+import WorkCompletionChart from '../components/WorkCompletionChart';
 
 export default function TimeAnalyticsPage() {
   const { id: projectId } = useParams();
@@ -39,6 +40,7 @@ export default function TimeAnalyticsPage() {
 
   const tabs = [
     { key: 'overview', label: 'Overview', icon: <TrendingUp size={14} /> },
+    { key: 'completion', label: 'Work Completion', icon: <CheckCircle size={14} /> },
     { key: 'schedule', label: 'Monthly Schedule', icon: <Calendar size={14} /> },
   ];
 
@@ -130,6 +132,18 @@ export default function TimeAnalyticsPage() {
                 </div>
               </div>
             </>
+          )}
+
+          {activeTab === 'completion' && (
+            <div className="section-card" style={{ marginTop: 0 }}>
+              <div style={{ padding: '20px 24px 0' }}>
+                <h3 style={{ color: 'var(--text-primary)', margin: 0, fontSize: 16 }}>Work Completion Over Time</h3>
+                <p style={{ color: 'var(--text-muted)', margin: '4px 0 0', fontSize: 13 }}>Cumulative planned vs actual work progress as percentage of total scope</p>
+              </div>
+              <div style={{ padding: '16px 8px 16px' }}>
+                <WorkCompletionChart data={timeline} />
+              </div>
+            </div>
           )}
 
           {activeTab === 'schedule' && (
